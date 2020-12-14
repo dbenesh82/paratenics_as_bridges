@@ -1,0 +1,11 @@
+*.html
+*.docx
+*.pptx
+*.xlsx
+*.svg
+*.RData
+*.Rproj
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
