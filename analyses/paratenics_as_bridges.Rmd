@@ -1,6 +1,9 @@
 ---
 title: "Eco bridges"
-output: github_document
+output: 
+  github_document:
+    toc: true
+    df_print: kable
 ---
 
 ```{r setup, include=FALSE}

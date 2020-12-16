@@ -2,7 +2,7 @@ In this repository, we explore the evolution of paratenesis in complex life cycl
 
 # Background
 
-Parasitic worms with complex life cycles like tapeworms, flukes, nematodes and acanthocephalans must infect multiple hosts in succession.
+Parasitic worms with complex life cycles like tapeworms, flukes, nematodes and acanthocephalans must infect multiple hosts in succession. Flexibility - being able to facultatively skip hosts - would clearly be beneficial. When do parasites facultatively skip their intermediate hosts?
 
 # Data
 
@@ -10,6 +10,7 @@ The main data source for this study is a [database](https://esajournals.onlineli
 
 # Analyses
 
+[Here](analyses/paratenics_in_lcs.md) we explore which hosts are usually paratenic hosts. And [here](analyses/paratenics_as_bridges.md) we explore whether these hosts fill an ecological need.
 
 # Conclusions
 

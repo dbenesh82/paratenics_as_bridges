@@ -1,6 +1,9 @@
 ---
 title: "Eco bridges"
-output: github_document
+output: 
+  github_document:
+    toc: true
+    df_print: kable
 ---
 
 ```{r setup, include=FALSE}
@@ -19,11 +22,14 @@ dat <- mutate(dat, Host_no_fac = factor(Host_no_fac),
 dat <- mutate(dat, stage_lcl = paste0("lc", lcl_max_fac, "_", Host_no_fac),
               Def.int = factor(Def.int, levels = c("int", "def")))
 dat <- mutate(dat, Def.int = factor(Def.int, labels = c('Intermediate', 'Definitive')))
+dat <- mutate(dat, log_start = log(initial_biov))
 dat <- filter(dat, Facultative != "postcyclic", assumed_stage == "no")%>%
   mutate(is_paratenic = if_else(Facultative == "paratenic", "paratenic", "obligate"))%>%
   mutate(is_paratenic_dummy = if_else(is_paratenic=="paratenic", 1, 0),
          p_index = log( (biovolume/exp(host_bm)) ))
 ```
+
+
 
 ## Exploration
 
@@ -90,6 +96,8 @@ ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.major.x = element_blank())
 ```
 
+There are so few life cycles with fourth intermediate hosts (2), we should probably drop them to avoid complete separation in the models below.
+
 Do obligate and paratenic hosts differ in size? Yes, since paratenic hosts are later in the life cycle they tend to be larger than obligate intermediate hosts.
 
 ```{r}
@@ -106,6 +114,7 @@ ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
 ```
+
 However, within a life cycle stage, there is not much difference between obligate and paratenic hosts. 
 
 ```{r}
@@ -123,11 +132,12 @@ ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
 ```
+
 There might be a slight tendency for worms to enter their paratenic hosts at a larger body size though.
 
 ```{r}
 ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
-       aes(x = Host_no_fac, y = log(initial_biov), color = is_paratenic)) + 
+       aes(x = Host_no_fac, y = log_start, color = is_paratenic)) + 
   geom_boxplot(position = position_dodge(), outlier.colour = NA) +
   geom_point(position = position_jitterdodge(), alpha = 0.3) +
   scale_color_brewer(type = "qual", palette = "Set2", direction = -1) +
@@ -140,11 +150,12 @@ ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
 ```
+
 This looks robust across helminth groups...
 
 ```{r}
 ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
-       aes(x = Host_no_fac, y = log(initial_biov), color = is_paratenic)) + 
+       aes(x = Host_no_fac, y = log_start, color = is_paratenic)) + 
   geom_boxplot(position = position_dodge(), outlier.colour = NA) +
   geom_point(position = position_jitterdodge(), alpha = 0.3) +
   scale_color_brewer(type = "qual", palette = "Set2", direction = -1) +
@@ -157,6 +168,46 @@ ggplot(filter(dat, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank())
 ```
+We can also bin by initial worm size and see that paratenesis becomes more likely as worm larvae get bigger. The largest larvae treat their next intermediate host almost always as paratenic.
+
+```{r}
+dx <- dat%>%
+  filter(lcl_max_fac != "1", Def.int != "Definitive")%>%
+  mutate(start_bin = cut(log_start, breaks = seq(min(log_start, na.rm = T), max(log_start, na.rm = T), by = 0.5 )))%>%
+  group_by(start_bin)%>%
+  summarise(n = n(),
+            median_ws = median(log_start, na.rm = T),
+            prop_paratenic = sum(is_paratenic=="paratenic")/n())
+```
+```{r}
+ggplot(dx, aes(x = median_ws, y = prop_paratenic)) +
+  geom_point(aes(size = n)) +
+  geom_smooth() +
+  scale_size_continuous(trans = "log10")
+```
+
+However, when we break the data up by life cycle stage, we see that much of the correlation between paratenesis and worm size is driven by stage.
+
+```{r}
+dx <- dat%>%
+  filter(lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4")%>%
+  mutate(start_bin = cut(log_start, breaks = seq(min(log_start, na.rm = T), max(log_start, na.rm = T), by = 0.5 )))%>%
+  group_by(start_bin, Host_no_fac, lcl_max_fac, stage_lcl)%>%
+  summarise(n = n(),
+            median_ws = median(log_start, na.rm = T),
+            prop_paratenic = sum(is_paratenic=="paratenic")/n())%>%
+  ungroup()
+```
+```{r}
+ggplot(dx, aes(x = median_ws, y = prop_paratenic)) +
+  geom_point(aes(size = n, color = Host_no_fac)) +
+  geom_smooth() +
+  geom_smooth(aes(group = Host_no_fac, color = Host_no_fac), se = F) +
+  facet_grid(~lcl_max_fac) +
+  scale_size_continuous(trans = "log10")
+```
+
+
 
 ## General linear models
 
@@ -165,7 +216,7 @@ Now we can test a few models. We first fit general linear models (binomial error
 ```{r}
 mod0 <- glm(is_paratenic_dummy ~ 1, 
             family = "binomial",
-            data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive")
+            data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4")
             )
 mod1 <- update(mod0, . ~ . + Host_no_fac)
 mod1.1 <- update(mod0, . ~ . + lcl_max_fac)
@@ -198,25 +249,48 @@ For example, first hosts in 4-host cycles are more likely to be paratenic than t
 summary(mod3)
 ```
 
-Does adding host size to the model improve things? This is a smaller sample size, since not all stages had available host sizes. After accounting for life cycle stage, the addition of host size is not significant.
+Does adding host size to the model improve things? This is a smaller sample size, since not all stages had available host sizes. After accounting for life cycle stage, the addition of host size is marginally significant. The further addition of a stage by host size interaction is also mildly significant.
 
 ```{r}
-mod3_bm <- update(mod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", !is.na(host_bm)))
+mod3_bm <- update(mod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4", !is.na(host_bm)))
 mod4_bm <- update(mod3_bm, . ~ . + host_bm)
-anova(mod3_bm, mod4_bm, test = "Chi")
+mod5_bm <- update(mod4_bm, . ~ . + stage_lcl:host_bm)
+anova(mod3_bm, mod4_bm, mod5_bm, test = "Chi")
 ```
 The parameter for host size suggests paratenesis is more likely in larger hosts, which is what I would expect.
 
 ```{r}
 summary(mod4_bm)
 ```
-
-Let's fit the same model, but with starting parasite size. Larger worms have less incentive to grow, so may be more likely to undergo paratenesis. Adding starting size improves the model with just life stage.
+Here is how host size impacts paratenesis.
 
 ```{r}
-mod3_w0 <- update(mod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", !is.na(initial_biov)))
-mod4_w0 <- update(mod3_w0, . ~ . + log(initial_biov))
-anova(mod3_w0, mod4_w0, test = "Chi")
+dx <- dat%>%
+  filter(lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4")%>%
+  mutate(start_bin = cut(host_bm, breaks = seq(min(host_bm, na.rm = T), max(host_bm, na.rm = T), by = 1 )))%>%
+  group_by(start_bin, Host_no_fac, lcl_max_fac, stage_lcl)%>%
+  summarise(n = n(),
+            median_bm = median(host_bm, na.rm = T),
+            prop_paratenic = sum(is_paratenic=="paratenic")/n())%>%
+  ungroup()
+dx$pred_par <- boot::inv.logit( predict(mod5_bm, newdata = rename(dx, host_bm = median_bm)) )
+```
+```{r}
+ggplot(dx, aes(x = median_bm, y = prop_paratenic, color = Host_no_fac)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_line(aes(y = pred_par)) +
+  facet_grid(~lcl_max_fac) +
+  scale_size_continuous(trans = "log10") +
+  theme(panel.grid.minor = element_blank())
+```
+
+Let's fit the same model, but with starting parasite size. Larger worms have less incentive to grow, so may be more likely to undergo paratenesis. Adding starting size improves the model with just life stage, while adding the interaction between parasite size and stage is a mild improvement.
+
+```{r}
+mod3_w0 <- update(mod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4", !is.na(initial_biov)))
+mod4_w0 <- update(mod3_w0, . ~ . + log_start)
+mod5_w0 <- update(mod4_w0, . ~ . + stage_lcl:log_start)
+anova(mod3_w0, mod4_w0, mod5_w0, test = "Chi")
 ```
 At a given stage, larger worms are more likely to undergo paratenesis.
 
@@ -224,12 +298,34 @@ At a given stage, larger worms are more likely to undergo paratenesis.
 summary(mod4_w0)
 ```
 
+Here are the model predictions plotted.
+
+```{r}
+dx <- dat%>%
+  filter(lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4")%>%
+  mutate(start_bin = cut(log_start, breaks = seq(min(log_start, na.rm = T), max(log_start, na.rm = T), by = 1 )))%>%
+  group_by(start_bin, Host_no_fac, lcl_max_fac, stage_lcl)%>%
+  summarise(n = n(),
+            median_ws = median(log_start, na.rm = T),
+            prop_paratenic = sum(is_paratenic=="paratenic")/n())%>%
+  ungroup()
+dx$pred_par <- boot::inv.logit( predict(mod5_w0, newdata = rename(dx, log_start = median_ws)) )
+```
+```{r}
+ggplot(dx, aes(x = median_ws, y = prop_paratenic, color = Host_no_fac)) +
+  geom_point(aes(size = n), alpha = 0.3) +
+  geom_line(aes(y = pred_par)) +
+  facet_grid(~lcl_max_fac) +
+  scale_size_continuous(trans = "log10") +
+  theme(panel.grid.minor = element_blank())
+```
+
 We can also fit these models with both host mass and worm size together. There is still an effect of worm size but not host mass and there is not a clear interaction.
 
 ```{r}
-mod3_bm_w0 <- update(mod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", !is.na(initial_biov), !is.na(host_bm)))
-mod4_bm_w0 <- update(mod3_bm_w0, . ~ . + host_bm + log(initial_biov))
-mod5_bm_w0 <- update(mod3_bm_w0, . ~ . + host_bm * log(initial_biov))
+mod3_bm_w0 <- update(mod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4", !is.na(initial_biov), !is.na(host_bm)))
+mod4_bm_w0 <- update(mod3_bm_w0, . ~ . + host_bm + log_start)
+mod5_bm_w0 <- update(mod3_bm_w0, . ~ . + host_bm * log_start)
 anova(mod3_bm_w0, mod4_bm_w0, mod5_bm_w0, test = "Chi")
 ```
 Even with fewer data, the effect of worm size on paratenesis is significant and of about the same magnitude.
@@ -240,7 +336,7 @@ summary(mod4_bm_w0)
 
 ## Generalized Linear Mixed Models
 
-We have not accounted for parasite taxonomy yet. A common problem in taxonomic binomial models is that some taxa will only be paratenic or obligate at a given life stage resulting in complete separation and unrealistic parameter estimates. So let's fit taxonomic mixed models, but only include the higher taxonomic levels (from order level; including family results in complete separation), because higher taxonomic groups are likely to include a mix of obligate and paratenic stages (no complete separation).
+We have not accounted for parasite taxonomy yet. A common problem in taxonomic binomial models is that some taxa at a given life stage will be either always paratenic or always obligate. This is called complete separation and causes unrealistic parameter estimates. So let's fit taxonomic mixed models, but only include the higher taxonomic levels (from order level), because higher taxonomic groups are likely to include a mix of obligate and paratenic stages (no complete separation; adding family results in complete separation).
 
 ```{r}
 library(lme4)
@@ -252,7 +348,7 @@ We fit the same series of models, but no include taxonomic effects.
 mmod0 <- glmer(is_paratenic_dummy ~ 1 + (1|parasite_phylum) + (1|parasite_class) + 
                  (1|parasite_order), 
             family = "binomial",
-            data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive")
+            data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4")
             )
 mmod1 <- update(mmod0, . ~ . + Host_no_fac)
 mmod1.1 <- update(mmod0, . ~ . + lcl_max_fac)
@@ -267,7 +363,7 @@ anova(mmod0, mmod1, test = "Chi")
 anova(mmod0, mmod1.1, test = "Chi")
 ```
 
-The effect of life cycle length, though, is mainly due to having more hosts. When we added life cycle length to a model with host number, it was not significant. However, the opposite, adding host number to the life cycle length-only model was a clear improvement.
+The effect of life cycle length, though, is mainly due to having more hosts. When we added life cycle length to a model with host number, it was marginally significant. However, the opposite, adding host number to the life cycle length-only model was a clear improvement.
 
 ```{r}
 anova(mmod1, mmod2, test = "Chi")
@@ -280,42 +376,38 @@ The interaction between host number and life cycle length was significant too, b
 anova(mmod2, mmod3, test = "Chi")
 ```
 
-If we look at the model with life stage (combo of host number and life cycle length), we see that the random effects are not zero, but they are also not enormous, which would indicate complete separation.
+If we look at the model with life stage (combo of host number and life cycle length), we see that the random effects are not zero, suggesting taxa differ in the likelihood of paratenesis. They are also not enormous, which would indicate complete separation. The fixed effect of "fourth intermediate host" though is huge, because these are always categorized as paratenic. This is an indication of complete separation.
 
 ```{r}
 summary(mmod3)
 ```
 
-The random effects, though, do account for a fair chunk of the residual variation, as judged by R2.
+The model's R2 suggests the random effects (taxonomy) account for a fair chunk of the residual variation.
 
 ```{r}
 MuMIn::r.squaredGLMM(mmod3)
 ```
 
-Does adding host size to the model improve things? This is a smaller sample size, since not all stages had available host sizes. After accounting for life cycle stage, the addition of host size is not significant.
+Does adding host size to the model improve things? After accounting for life cycle stage, the addition of host size is not significant, but the host size by stage interaction is significant.
 
 ```{r}
-mmod3_bm <- update(mmod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", !is.na(host_bm)))
+mmod3_bm <- update(mmod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4", !is.na(host_bm)))
 mmod4_bm <- update(mmod3_bm, . ~ . + host_bm)
-anova(mmod3_bm, mmod4_bm, test = "Chi")
+mmod5_bm <- update(mmod4_bm, . ~ . + stage_lcl:host_bm)
+anova(mmod3_bm, mmod4_bm, mmod5_bm, test = "Chi")
 ```
-The parameter for host size suggests paratenesis is more likely in larger hosts, which is what I would expect.
+The host size variable explains maybe 2% of the variation not accounted for by stage, with the interaction accounting for maybe 4% more.
 
 ```{r}
-summary(mmod4_bm)
+lapply(list(mmod3_bm, mmod4_bm, mmod5_bm), FUN = MuMIn::r.squaredGLMM)
 ```
-The host size variable explains maybe 2% of the variation not accounted for by stage.
+Let's fit the same model, but with starting parasite size. Larger worms have less incentive to grow, so may be more likely to undergo paratenesis. Adding starting size improves the model with just life stage but the interaction does not.
 
 ```{r}
-lapply(list(mmod3_bm, mmod4_bm), FUN = MuMIn::r.squaredGLMM)
-```
-
-Let's fit the same model, but with starting parasite size. Larger worms have less incentive to grow, so may be more likely to undergo paratenesis. Adding starting size improves the model with just life stage.
-
-```{r}
-mmod3_w0 <- update(mmod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", !is.na(initial_biov)))
-mmod4_w0 <- update(mmod3_w0, . ~ . + log(initial_biov))
-anova(mmod3_w0, mmod4_w0, test = "Chi")
+mmod3_w0 <- update(mmod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4", !is.na(initial_biov)))
+mmod4_w0 <- update(mmod3_w0, . ~ . + log_start)
+mmod5_w0 <- update(mmod4_w0, . ~ . + stage_lcl:log_start)
+anova(mmod3_w0, mmod4_w0, mmod5_w0, test = "Chi")
 ```
 
 At a given stage, larger worms are more likely to undergo paratenesis.
@@ -332,19 +424,186 @@ lapply(list(mmod3_w0, mmod4_w0), FUN = MuMIn::r.squaredGLMM)
 We can also fit these models with both host mass and worm size together. There is still an effect of worm size but not host mass and there is not a clear interaction.
 
 ```{r}
-mmod3_bm_w0 <- update(mmod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive", !is.na(initial_biov), !is.na(host_bm)))
-mmod4_bm_w0 <- update(mmod3_bm_w0, . ~ . + host_bm + log(initial_biov))
-mmod5_bm_w0 <- update(mmod3_bm_w0, . ~ . + host_bm * log(initial_biov))
+mmod3_bm_w0 <- update(mmod3, . ~ ., data = filter(dat, lcl_max_fac != "1", Def.int != "Definitive",  Host_no_fac != "4", !is.na(initial_biov), !is.na(host_bm)))
+mmod4_bm_w0 <- update(mmod3_bm_w0, . ~ . + host_bm + log_start)
+mmod5_bm_w0 <- update(mmod3_bm_w0, . ~ . + host_bm * log_start)
 anova(mmod3_bm_w0, mmod4_bm_w0, mmod5_bm_w0, test = "Chi")
 ```
 Even with fewer data, the effect of worm size on paratenesis is significant and of about the same magnitude.
 
 ```{r}
-summary(mmod4_bm_w0)
+summary(mmod5_bm_w0)
+```
+
+
+I like to use a Bayesian approach to put CIs on the plots, so let's refit the worm size models with MCMCglmm.
+
+```{r}
+library(MCMCglmm)
+```
+
+refit model with worm size
+
+```{r}
+dx <- dat%>%
+  filter(lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4", !is.na(initial_biov))
+
+dxx <- group_by(dx, Host_no_fac, lcl_max_fac, stage_lcl)%>%
+  summarize(min_ws = min(log_start, na.rm = T),
+            max_ws = max(log_start, na.rm = T))  
+
+dxy <- bind_rows(
+  data.frame(Host_no_fac = "1", lcl_max_fac = "2", stage_lcl = "lc2_1",
+             parasite_order = unique(dx$parasite_order)[1], parasite_class = unique(dx$parasite_class)[1], parasite_phylum = unique(dx$parasite_phylum)[1], 
+             log_start = seq(dxx$min_ws[1], dxx$max_ws[1], length.out = 50)),
+  data.frame(Host_no_fac = "1", lcl_max_fac = "3", stage_lcl = "lc3_1",
+             parasite_order = unique(dx$parasite_order)[1], parasite_class = unique(dx$parasite_class)[1], parasite_phylum = unique(dx$parasite_phylum)[1], 
+             log_start = seq(dxx$min_ws[2], dxx$max_ws[2], length.out = 50)),
+  data.frame(Host_no_fac = "1", lcl_max_fac = "3+", stage_lcl = "lc3+_1",
+             parasite_order = unique(dx$parasite_order)[1], parasite_class = unique(dx$parasite_class)[1], parasite_phylum = unique(dx$parasite_phylum)[1], 
+             log_start = seq(dxx$min_ws[3], dxx$max_ws[3], length.out = 50)),
+  data.frame(Host_no_fac = "2", lcl_max_fac = "3", stage_lcl = "lc3_2",
+             parasite_order = unique(dx$parasite_order)[1], parasite_class = unique(dx$parasite_class)[1], parasite_phylum = unique(dx$parasite_phylum)[1], 
+             log_start = seq(dxx$min_ws[4], dxx$max_ws[4], length.out = 50)),
+  data.frame(Host_no_fac = "2", lcl_max_fac = "3+", stage_lcl = "lc3+_2",
+             parasite_order = unique(dx$parasite_order)[1], parasite_class = unique(dx$parasite_class)[1], parasite_phylum = unique(dx$parasite_phylum)[1], 
+             log_start = seq(dxx$min_ws[5], dxx$max_ws[5], length.out = 50)),
+  data.frame(Host_no_fac = "3", lcl_max_fac = "3+", stage_lcl = "lc3+_3",
+             parasite_order = unique(dx$parasite_order)[1], parasite_class = unique(dx$parasite_class)[1], parasite_phylum = unique(dx$parasite_phylum)[1], 
+             log_start = seq(dxx$min_ws[6], dxx$max_ws[6], length.out = 50))
+)
+
+dxy$pred <- 'yes'
+dx <- bind_rows(dx, dxy)
+rm(dxx, dxy)
 ```
 
 ```{r}
-lapply(list(mmod0, mmod1, mmod2, mmod3), FUN = MuMIn::r.squaredGLMM)
+# refit model with mcmcglmm
+prior <- list(R = list(V = 1, fix = 1),
+              G = list(G1 = list(V = 1, nu = 0.002),
+                       G2 = list(V = 1, nu = 0.002),
+                       G3 = list(V = 1, nu = 0.002))
+                )
+mc_mmod4_w0 <- MCMCglmm(is_paratenic_dummy ~ stage_lcl + log_start, 
+                 random = ~ parasite_order + parasite_class + parasite_phylum,
+                 prior = prior,
+                 nitt = 503000, thin = 1000, burnin = 3000,
+                 data = dx,
+                 family = 'categorical', pr=F, 
+                 verbose = F)
+mc_mmod5_w0 <- MCMCglmm(is_paratenic_dummy ~ stage_lcl*log_start, 
+                 random = ~ parasite_order + parasite_class + parasite_phylum,
+                 prior = prior,
+                 nitt = 503000, thin = 1000, burnin = 3000,
+                 data = dx,
+                 family = 'categorical', pr=F, 
+                 verbose = F)
+```
+```{r}
+summary(mc_mmod4_w0)
 ```
 
 
+```{r}
+# predicted values and SE
+p <- predict.MCMCglmm(mc_mmod4_w0, 
+             type = 'terms',
+             interval = 'confidence',
+             # ignore random effects
+             marginal = ~ parasite_order + parasite_class + parasite_phylum
+             )
+p <- boot::inv.logit(p) # convert to proportions
+p <- cbind(dx, p)
+p <- filter(p, pred == 'yes')
+```
+```{r}
+dxx <- dat%>%
+  filter(lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "4")%>%
+  mutate(start_bin = cut(log_start, breaks = seq(min(log_start, na.rm = T), max(log_start, na.rm = T), by = 1 )))%>%
+  group_by(start_bin, Host_no_fac, lcl_max_fac, stage_lcl)%>%
+  summarise(n = n(),
+            median_ws = median(log_start, na.rm = T),
+            prop_paratenic = sum(is_paratenic=="paratenic")/n())%>%
+  ungroup()
+```
+Here are the predicted values with CIs. The predictions are from a model without a stage x size interaction.
+
+```{r}
+fx <- ggplot(dxx,
+       aes(y = prop_paratenic, x = exp(median_ws), color = Host_no_fac )) +
+  geom_point(
+    aes(size = n),
+    alpha = 0.3) +
+  geom_line(data = p, 
+            aes(x = exp(log_start), y = fit),
+            size = 1.5) +
+  geom_ribbon(data = p, 
+              aes(x = exp(log_start), y = fit, ymin = lwr, ymax = upr, fill = Host_no_fac),
+              alpha = 0.2, color = NA) +
+  facet_grid(~lcl_max_fac) +
+  scale_size_continuous(trans = "log10") +
+  scale_x_log10(labels = scales::trans_format("log10", scales::math_format(10^.x))) + 
+  scale_color_brewer(palette = "Dark2", direction = -1) + 
+  scale_fill_brewer(palette = "Dark2", direction = -1) + 
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = bquote("Worm size "(~mm^3)),
+       y = "Proportion paratenic", 
+       color = "Intermediate host\nin cycle",
+       fill = "Intermediate host\nin cycle",
+       size = "Species")
+fx
+ggsave(fx, filename = "../figs/figx.png", width = 7, height = 5)
+```
+
+These predictions are from a model with a stage x size interaction. 
+
+```{r}
+# predicted values and SE
+p <- predict.MCMCglmm(mc_mmod5_w0, 
+             type = 'terms',
+             interval = 'confidence',
+             # ignore random effects
+             marginal = ~ parasite_order + parasite_class + parasite_phylum
+             )
+p <- boot::inv.logit(p) # convert to proportions
+p <- cbind(dx, p)
+p <- filter(p, pred == 'yes')
+```
+
+```{r}
+ggplot(dxx,
+       aes(y = prop_paratenic, x = exp(median_ws), color = Host_no_fac )) +
+  geom_point(
+    aes(size = n),
+    alpha = 0.3) +
+  geom_line(data = p, 
+            aes(x = exp(log_start), y = fit),
+            size = 1.5) +
+  geom_ribbon(data = p, 
+              aes(x = exp(log_start), y = fit, ymin = lwr, ymax = upr, fill = Host_no_fac),
+              alpha = 0.2, color = NA) +
+  facet_grid(~lcl_max_fac) +
+  scale_size_continuous(trans = "log10") +
+  scale_x_log10(labels = scales::trans_format("log10", scales::math_format(10^.x))) + 
+  scale_color_brewer(palette = "Dark2", direction = -1) + 
+  scale_fill_brewer(palette = "Dark2", direction = -1) + 
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = bquote("Worm size "(~mm^3)),
+       y = "Proportion paratenic", 
+       color = "Intermediate host\nin cycle",
+       fill = "Intermediate host\nin cycle",
+       size = "Species") 
+
+```
+
+Those look overfit to me and the DIC is indeed higher (worse) in the more complex model.
+
+```{r}
+mc_mmod4_w0$DIC
+mc_mmod5_w0$DIC
+```
+
+# Conclusions
+
+Paratenic hosts are more common at later life cycle stages. Moreover, at a given life stage (e.g. second intermediate host), paratenic hosts are more common if worms enter the host as large larvae. Thus, the luxury of flexible life cycles may only be possible with some larval growth.
