@@ -1,0 +1,230 @@
+---
+title: "Eco bridges"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
+options(stringsAsFactors = FALSE)
+theme_set(new = theme_bw())
+```
+
+First, we import the data table. It is at the level of parasite stages and includes various host characteristics.
+
+```{r}
+dat <- read.csv(file = "../data/stage_level_combined_noimputed.csv", header = T)
+dat <- mutate(dat, Host_no_fac = factor(Host_no_fac),
+              obs = factor(1:length(Parasite.species)))
+dat <- mutate(dat, stage_lcl = paste0("lc", lcl_max_fac, "_", Host_no_fac),
+              Def.int = factor(Def.int, levels = c("int", "def")))
+dat <- mutate(dat, Def.int = factor(Def.int, labels = c('Intermediate', 'Definitive')))
+dat <- filter(dat, Facultative != "postcyclic", assumed_stage == "no")%>%
+  mutate(is_paratenic = if_else(Facultative == "paratenic", "paratenic", "obligate"))%>%
+  mutate(is_paratenic_dummy = if_else(is_paratenic=="paratenic", 1, 0),
+         p_index = log( (biovolume/exp(host_bm)) ))%>%
+  mutate(host_bm = log(10^host_bm))
+```
+
+```{r}
+# instead of stage-level, reformulate to be at step-in-cycle level
+# calculate consumer - resource sizes and trophic levels for each life step
+dat <- dat%>%
+  group_by(Parasite.species)%>%
+  mutate(
+    con_g = host_bm,
+    res_g = if_else(Host_no_fac == "1", log(initial_biov/1000), lag(host_bm)),
+    con_tl = host_tl,
+    res_tl = if_else(Host_no_fac == "1", 1, lag(host_tl)),
+    fac_step = "among obligate hosts"
+    )%>%
+  mutate(fac_step = 
+           if_else(Facultative == "paratenic", "to paratenic", 
+                   if_else(lag(Facultative) == "paratenic", "from paratenic", fac_step, missing = fac_step)))%>%
+  ungroup()
+
+dat2 <- dat%>%
+  mutate(delta_host_bm = con_g - res_g, 
+         delta_host_tl = con_tl - res_tl)
+```
+
+```{r}
+# for paratenic links, calculate change in host mass/tl if paratenic host skipped
+spp_with_paratenic_stage <- filter(dat, Facultative == "paratenic")%>%
+  select(Parasite.species)%>%distinct()%>%
+  .$Parasite.species
+
+dat3 <- dat2%>%
+  filter(Parasite.species %in% spp_with_paratenic_stage)%>%
+  group_by(Parasite.species)%>%
+  mutate(res_g = if_else(fac_step == "from paratenic" & lag(fac_step == "to paratenic"),
+                         lag(res_g), res_g),
+         res_tl = if_else(fac_step == "from paratenic" & lag(fac_step == "to paratenic"),
+                         lag(res_tl), res_tl),
+         fac_step = if_else(fac_step == "from paratenic" & lag(fac_step == "to paratenic"), 
+                            "skip paratenic", fac_step))%>%
+  ungroup()
+
+# dat3%>%
+#   select(Parasite.species, Host.no, fac_step, con_g, res_g)
+
+dat3 <- dat3%>%
+  filter(fac_step == "skip paratenic")%>%
+  mutate(delta_host_bm = con_g - res_g, 
+         delta_host_tl = con_tl - res_tl)
+```
+
+```{r}
+dat3 <- bind_rows(dat2, dat3)
+dat3 <- mutate(dat3, fac_step = fct_relevel(fac_step, c("among obligate hosts", "to paratenic", "from paratenic", "skip paratenic")))
+```
+
+## Exploration
+
+In a [previous notebook](paratenics_in_lcs.Rmd) we explored which hosts were paratenic in life cycles. Now, let's look at how paratenic hosts may fill an ecological necessity for worms.
+
+#### Body mass
+
+First, we plot the correlation between hosts sizes (big current host, big next host). Steps that involve obligate hosts are similar to those that involve paratenic hosts. However, if the paratenic host is skipped, then there is a large change in host size.
+
+```{r}
+ggplot(filter(dat3, lcl_max_fac != "1"),
+       aes(x = res_g, y = con_g, color = fac_step)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = lm, se = F) +
+  labs(x = "Host n (or egg) size", y = "Host n+1 size")
+```
+
+Here is the same data but as a boxplot with groups separated by life stage. Within a given life stage, paratenic and obligate links look similar, but the change in host mass is larger when the paratenic host is skipped.
+
+```{r}
+ggplot(filter(dat3, lcl_max_fac != "1"), 
+       aes(y = delta_host_bm, x = Host_no_fac, color = fac_step)) +
+  geom_boxplot(outlier.colour = NA) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), alpha = 0.2) +
+  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
+  labs(y = "Fold change host mass", x = "Host in cycle")
+```
+Maybe a slope graph is another way to look at the change? Each line corresponds to a step in a species life cycle. The change in host mass is consistently larger when the paratenic host is skipped, though the difference tends to decrease in very long life cycles.
+
+```{r}
+ggplot(filter(dat3, lcl_max_fac != "1",
+              fac_step == "from paratenic" | fac_step == "skip paratenic"), 
+       aes(x = fac_step, y = delta_host_bm, color = Host_no_fac)) +
+  geom_line(aes(group = paste(Parasite.species, Host.no))) +
+  geom_point() +
+  facet_grid(~lcl_max_fac)
+```
+
+Let's fit mixed models for the change in host body mass. We add host number, life cycle length, life stage, and then whether or not a link is facultative.
+
+```{r}
+library(lme4)
+```
+```{r}
+mm0 <- lmer(delta_host_bm ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
+              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
+            data = filter(dat3, lcl_max_fac != "1"))
+mm1 <- update(mm0, . ~ . + Host_no_fac)
+mm2 <- update(mm1, . ~ . + lcl_max_fac)
+mm3 <- update(mm0, . ~ . + stage_lcl)
+mm4 <- update(mm3, . ~ . + fac_step)
+```
+
+Likelihood ratio tests show that adding host number is a large improvement (changes in host mass decline with life cycle progression), while adding life cycle length (the changes are smaller in longer life cycles) and the interaction between stage and life cycle length is a small improvement. Finally, it is clear that facultative step is a large improvement.
+
+```{r}
+anova(mm0, mm1, mm2, mm3, mm4, test = "Chi")
+```
+When we look at the parameters, we see that changes in host mass are similar for obligate and paratenic links. But if the paratenic host is skipped, then there is a large change in host mass.
+
+```{r}
+summary(mm4)
+```
+
+
+#### Trophic level
+
+We make the same plots for the change in host trophic level. We should expect large "gaps" from one host to the next if the intermediate host is skipped.
+
+```{r}
+ggplot(filter(dat3, lcl_max_fac != "1"),
+       aes(x = res_tl, y = con_tl, color = fac_step)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = lm, se = F) +
+  labs(x = "Host n (or egg) trophic level", y = "Host n+1 trophic level")
+```
+
+Here is the same data but as a boxplot with groups separated by life stage. Within a given life stage, paratenic and obligate links look similar, but the change in host trophic level is larger when the paratenic host is skipped.
+
+```{r}
+ggplot(filter(dat3, lcl_max_fac != "1"),
+       # %>%
+         # filter(Host_no_fac != "1"), 
+       aes(y = delta_host_tl, x = Host_no_fac, color = fac_step)) +
+  geom_boxplot(outlier.colour = NA) +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), alpha = 0.2) +
+  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
+  labs(y = "Fold change host TL", x = "Host in cycle")
+```
+Maybe a slope graph is another way to look at the change? Each line corresponds to a step in a species life cycle. The change in host trophic level is consistently larger when the paratenic host is skipped, though the difference tends to decrease in very long life cycles.
+
+```{r}
+ggplot(filter(dat3, lcl_max_fac != "1",
+              fac_step == "from paratenic" | fac_step == "skip paratenic"), 
+       aes(x = fac_step, y = delta_host_tl, color = Host_no_fac)) +
+  geom_line(aes(group = paste(Parasite.species, Host.no))) +
+  geom_point() +
+  facet_grid(~lcl_max_fac)
+```
+
+
+```{r}
+mm0_tl <- lmer(delta_host_tl ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
+              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
+            data = filter(dat3, lcl_max_fac != "1"))
+mm1_tl <- update(mm0_tl, . ~ . + Host_no_fac)
+mm2_tl <- update(mm1_tl, . ~ . + lcl_max_fac)
+mm3_tl <- update(mm0_tl, . ~ . + stage_lcl)
+mm4_tl <- update(mm3_tl, . ~ . + fac_step)
+```
+
+Likelihood ratio tests show that adding host number is a large improvement (changes in host TL decline with life cycle progression), while adding life cycle length is not an improvement (the changes in TL are consistent across life cycle lengths) and the interaction between stage and life cycle length is a small improvement. Finally, it is clear that facultative step is a large improvement.
+
+```{r}
+anova(mm0_tl, mm1_tl, mm2_tl, mm3_tl, mm4_tl, test = "Chi")
+```
+When we look at the parameters, we see that changes in host TL are similar for obligate and paratenic links. But if the paratenic host is skipped, then there is a large change in host TL.
+
+```{r}
+summary(mm4_tl)
+```
+
+
+```{r}
+# ggplot(filter(dat3, lcl_max_fac != "1")%>%
+#          filter(fac_step != "to paratenic"), 
+#        aes(y = delta_host_tl, x = Host_no_fac, color = fac_step)) +
+#   geom_boxplot(outlier.colour = NA) +
+#   geom_jitter(position = position_jitterdodge()) +
+#   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') 
+```
+
+```{r}
+# ggplot(filter(dat2, lcl_max_fac != "1"), 
+#        aes(x = Host.no, y = host_bm)) +
+#   geom_line(aes(group = Parasite.species)) +
+#   geom_line(data = 
+#               filter(dat2, Parasite.species %in% spp_with_paratenic_stage, Facultative != "paratenic")%>%
+#               group_by(Parasite.species)%>%
+#               mutate(Host.no = 1:length(Parasite.species))
+#               ,
+#             aes(group = Parasite.species),
+#             color = "red") +
+#   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') 
+```
+
+
+# Conclusions
+
+As expected, paratenic hosts fill an ecological vacuum in complex life cycles.
