@@ -1,12 +1,12 @@
 ---
-title: "Eco bridges"
+title: "Paratenic hosts as ecological bridges"
 output: 
   github_document:
     toc: true
     df_print: kable
 ---
 
-In a [previous notebook](paratenics_in_lcs.Rmd) we explored which hosts were paratenic in life cycles. Now, let's look at how paratenic hosts may fill an ecological necessity for worms.
+In another [notebook](paratenics_in_lcs.Rmd) we explored which hosts were paratenic in life cycles. Now, let's look at how paratenic hosts may fill an ecological necessity for worms.
 
 ```{r setup, include=FALSE}
 library(tidyverse)
@@ -15,9 +15,9 @@ options(stringsAsFactors = FALSE)
 theme_set(new = theme_bw())
 ```
 
-We start by making a figure demonstrating what we want to test. Trophically-transmitted parasites with complex life cycles infect multiple hosts in succession. In some cases, they can skip certain hosts in their life cycle. For example, a parasite may be able to infect its third host with or without infecting the second host. These facultative hosts are usually paratenic hosts in which parasites undergo little growth and development, so they are not *physiologically* necessary for life cycle completion. But are they *ecologically* necessary? If not, we would expect them to fill a smaller trophic 'gap'.
+We start by making a figure demonstrating our hypothesis. Parasites with complex life cycles infect multiple hosts in succession, and often they are trophically transmitted - one host eats the next host. In some cases, they can skip certain hosts in their life cycle. For example, a parasite may be able to infect its third host with or without infecting the second host beforehand; the second host is facultative. These facultative hosts are usually paratenic hosts. In paratenic hosts, parasites undergo little growth and development, so they are assumed to not be  *physiologically* necessary for life cycle completion. But are they *ecologically* necessary? In other words, do they fill a smaller trophic 'gap' than obligate hosts?
 
-In the next figure, we plot how proxies of the hosts' ecological niche, like body mass or trophic level, increase with life cycle progression as parasites ascend the trophic chain. If a parasite has a facultative intermediate host (red point), we would expect it to fill a smaller ecological gap - the previous host should be relatively large (1) or the next host should be relatively small (2). Thus, if this host were skipped, the ecological "jump" a parasite needs to make is smaller (3).
+The demo figure shows how proxies of the hosts' trophic niche, like body mass or trophic level, increase with life cycle progression as parasites ascend the trophic chain. If an intermediate host is facultative (red point), we would expect it to bridge a smaller ecological gap between hosts. Specifically, the previous host should be relatively large (1) or the next host should be relatively small (2). Thus, if this host were skipped, the ecological "jump" a parasite needs to make is smaller (3, dashed vs solid line).
 
 ```{r}
 df <- data.frame(host_no = rep(c("egg", "1", "2", "3"), times = 2),
@@ -50,7 +50,7 @@ ggplot(df, aes(x = host_no, y = size_tl)) +
 # add numbers to response vars
 ```
 
-Now, let's test these ideas. We import the data table. It is at the level of parasite stages and includes various host characteristics.
+Is this the pattern we see in real parasite life cycles? We import the data table. It is at the level of parasite stages and includes various host characteristics.
 
 ```{r}
 dat <- read.csv(file = "../data/stage_level_combined_noimputed.csv", header = T)
@@ -66,6 +66,8 @@ dat <- filter(dat, Facultative != "postcyclic")%>%
          p_index = log( (biovolume/exp(host_bm)) ))%>%
   mutate(host_bm = log(10^host_bm))
 ```
+
+We wrangle the data so that for every step in the life cycle we also have the previous and next host size/trophic level. For the first host, the previous host size is the propagule size, and for previous host trophic level, it is 1 (primary producer/detritus).
 
 ```{r}
 # instead of stage-level, make columns at step-in-cycle level
@@ -101,43 +103,17 @@ dat2 <- dat%>%
          delta_host_bm_skip = host_bm_next - host_bm_prev, 
          delta_host_tl_skip = host_tl_next - host_tl_prev)
 ```
-
 ```{r}
-# also make a data table for when parasites skip a host in their cycle
-# dat3 <- dat2%>%
-#   group_by(Parasite.species)%>%
-#   mutate(skipper = Host.no - lag(Host.no), # for filtering later
-#          step_in_cycle = if_else(Host.no == 2, "egg to 2nd",
-#                              if_else(Host.no==3, "1st to 3rd", "2nd to 4th" )),
-#          fac_step = if_else(fac_step == "from paratenic" & lag(fac_step == "to paratenic"), 
-#                             "skip paratenic", "skip obligate")
-#          )%>%
-#   mutate(res_g = if_else(skipper == 1, lag(res_g), res_g),
-#          res_tl = if_else(skipper == 1, lag(res_tl), res_tl))%>%
-#   # select(Parasite.species, Host.no, skipper, fac_step, fac_step2, skip_step, con_g, res_g)
-#   filter(!is.na(skipper))%>%
-#   mutate(skipper = "Skip a host")
-#   
-# dat3 <- dat3%>%
-#   mutate(delta_host_bm = con_g - res_g, 
-#          delta_host_tl = con_tl - res_tl)
-
-dat3 <- bind_rows(dat2, dat3)
-dat3 <- mutate(dat3, fac_step = fct_relevel(fac_step, c("among obligate hosts", "to paratenic", "from paratenic", "skip obligate", "skip paratenic")),
-               step_in_cycle = fct_relevel(step_in_cycle, c("egg to 1st", "egg to 2nd", "1st to 2nd", "1st to 3rd", "2nd to 3rd", "2nd to 4th", "3rd to 4th")))
-```
-
-```{r}
-# for paratenic links, calculate change in host mass/tl if paratenic host skipped
+# variable to id spp with paratenic stages in life cycle 
 spp_with_paratenic_stage <- filter(dat, Facultative == "paratenic")%>%
   select(Parasite.species)%>%distinct()%>%
   .$Parasite.species
-dat3 <- mutate(dat3, spp_with_paratenic = if_else(Parasite.species %in% spp_with_paratenic_stage, "paratenic", "all obligate"))
+dat2 <- mutate(dat2, spp_with_paratenic = if_else(Parasite.species %in% spp_with_paratenic_stage, "paratenic", "all obligate"))
 ```
 
 # Body mass
 
-We can start with looking at host body mass. First, we simply plot host body mass across life cycle stages. We are only plotting intermediate hosts. Paratenic hosts do not seem to be larger than obligate hosts, though they may be at early life stages.
+We can start by looking at host body mass as our proxy for ecological niche. First, we simply plot host body mass across life cycle stages. We only plot intermediate hosts, since we are interested in when hosts are paratenic vs obligate intermediate hosts. At most stages, paratenic hosts do not seem to be larger than obligate hosts, though perhaps paratenic first hosts are larger than obligate first hosts.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -157,7 +133,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
 
 ### Previous host mass
 
-What about the host before the paratenic host? First, we can look at this in general (not separated by life cycle length). We see that the host before infecting a paratenic host tends to be larger than an obligate host. This is consistent with our toy figure, pattern (1). This also seems to increase with life cycle progression, suggesting paratenics may fill smaller gaps in later life stages.
+What about the host before the paratenic host? We first plot this in general (not separated by life cycle length). The hosts before a paratenic host tend to be larger than the hosts before an obligate intermediate host. This is consistent with our toy figure, pattern (1).
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -166,7 +142,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
+  labs(x = "Host number (n)", y = "Previous host (n-1) mass", color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
@@ -174,7 +150,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.major.x = element_blank()) 
 ```
 
-Since the change in host size varies across life cycle lengths, we should break this apart by life cycle length. At any given life stage, the host before a paratenic host tends to be larger.
+We know that size changes from one host to the next are not the same across life stages (e.g. predator-prey mass ratios get smaller with size). Therefore, let's break this apart by life cycle length. At any given life stage, the host before a paratenic host tends to be larger.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -183,7 +159,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
+  labs(x = "Host number (n)", y = "Previous host (n-1) mass", color = NULL) +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -200,7 +176,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
+  labs(x = "Host number (n)", y = "Previous host (n-1) mass", color = NULL) +
   facet_grid(parasite_phylum~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -209,9 +185,11 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
         panel.grid.major.x = element_blank()) 
 ```
 
+So, the host preceding a paratenic host tend to be larger than those preceding an obligate host, but this may not be super consistent across phyla. What about the host after a paratenic host?
+
 ### Next host mass
 
-What about the size of the next host? After a paratenic host, do parasite infect a smaller host (pattern 2 in the demo figure)? It does not look like it when we look across life cycle lengths...
+The host after a paratenic host looks to be the same size as the host after an obligate intermediate host. This is not consistent with pattern 2 in the demo figure.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -220,7 +198,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n+1") +
+  labs(x = "Host number (n)", y = "Next host (n+1) mass", color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
@@ -228,7 +206,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.major.x = element_blank()) 
 ```
 
-nor within life cycle lengths.
+When we break this down by life cycle length, the pattern does not change. Paratenics transmit worms to next hosts that are about the same size when transmitted via obligate hosts.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -237,7 +215,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n+1") +
+  labs(x = "Host number (n)", y = "Next host (n+1) mass", color = NULL) +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -245,7 +223,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank()) 
 ```
-Once we control for parasite phylum, there might be a slight decrease.
+Once we control for parasite phylum, there might be a slight decrease in some stages, but the trend is not obvious.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum != "Acanthocephala"),
@@ -254,7 +232,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n+1") +
+  labs(x = "Host number (n)", y = "Next host (n+1) mass", color = NULL) +
   facet_grid(parasite_phylum~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -263,15 +241,27 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
         panel.grid.major.x = element_blank()) 
 ```
 
+So if the host before a paratenic is larger, while the host after is the same size, then the 'gap' bridged by paratenic hosts should be smaller than the gap bridged by obligate intermediate hosts.
+
 ### Gap when skipping hosts
 
-Now how big is the 'gap' that paratenic hosts fill? Is it smaller than obligate hosts? Across life cycle lengths, it does look like fill a smaller gap.
+When we plot gap size when skipping an intermediate host (e.g. egg to second host, first to third host, and second to fourth host), we see that it is smaller when the paratenic host is skipped, especially at later life stages. This makes sense: paratenics are probably more common in later life stages, because they fill smaller "gaps". However, just because paratenics fill a smaller 'gap' does not mean that they are not ecologically helpful. We can see this by comparing the gap when skipping intermediate hosts with the gaps when infecting them. The dashed and solid black lines show these gaps (plus IQR) - the gaps are consistently smaller than when a host is skipped. Only in later stages does skipping paratenics compare to not skipping any hosts (they probably are ecologically disposable at these later stages).
 
 ```{r}
 dx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
   group_by(Host_no_fac)%>%
-  summarize(dbm = median(delta_host_bm_prev,na.rm = T))%>%
-  mutate(hni = as.integer(Host_no_fac))
+  summarize(dbm = median(delta_host_bm_prev, na.rm = T),
+            dbm_upr = quantile(delta_host_bm_prev, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_bm_prev, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n-1")
+
+dxx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
+  group_by(Host_no_fac)%>%
+  summarize(dbm = median(delta_host_bm_next, na.rm = T),
+            dbm_upr = quantile(delta_host_bm_next, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_bm_next, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n+1")
+dx <- bind_rows(dx, dxx)
 
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
        aes(x = Host_no_fac, y = delta_host_bm_skip, color = is_paratenic)) +
@@ -279,24 +269,38 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Change in host size if skipped") +
+  labs(x = "Host number (n)", y = "Change in host mass\nif host (n) skipped", 
+       linetype = NULL, color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank()) +
+  geom_crossbar(data = dx, 
+                aes(x = hni, y = dbm, ymin = dbm_lwr, ymax = dbm_upr, linetype = step),
+                color = NA, fill = "gray", alpha = 0.25, width = 0.6) +
   geom_segment(data = dx, 
-               aes(x = hni-0.3, xend = hni+0.3, y = dbm, yend = dbm), 
-               linetype = "dashed",color = "black")
+               aes(x = hni-0.3, xend = hni+0.3, y = dbm, yend = dbm, linetype = step), 
+               color = "black")
 ```
 
-And within stages.
+Here is the same plot, but separated by life cycle stage.
 
 ```{r}
 dx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
   group_by(Host_no_fac, lcl_max_fac)%>%
-  summarize(dbm = median(delta_host_bm_prev,na.rm = T))%>%
-  mutate(hni = as.integer(Host_no_fac))
+  summarize(dbm = median(delta_host_bm_prev, na.rm = T),
+            dbm_upr = quantile(delta_host_bm_prev, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_bm_prev, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n-1")
+
+dxx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
+  group_by(Host_no_fac, lcl_max_fac)%>%
+  summarize(dbm = median(delta_host_bm_next, na.rm = T),
+            dbm_upr = quantile(delta_host_bm_next, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_bm_next, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n+1")
+dx <- bind_rows(dx, dxx)
 
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
        aes(x = Host_no_fac, y = delta_host_bm_skip, color = is_paratenic)) +
@@ -304,19 +308,23 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Change in host size if skipped") +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
+  labs(x = "Host number (n)", y = "Change in host mass\nif host (n) skipped", 
+       linetype = NULL, color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank()) +
+  geom_crossbar(data = dx, 
+                aes(x = hni, y = dbm, ymin = dbm_lwr, ymax = dbm_upr, linetype = step),
+                color = NA, fill = "gray", alpha = 0.25, width = 0.6) +
   geom_segment(data = dx, 
-               aes(x = hni-0.3, xend = hni+0.3, y = dbm, yend = dbm), 
-               linetype = "dashed",color = "black")
+               aes(x = hni-0.3, xend = hni+0.3, y = dbm, yend = dbm, linetype = step), 
+               color = "black")
 ```
 
-Pattern is less clear when we look at each phylum separately.
+When we separate by phylum, it is less obvious that 'gaps' are smaller for paratenic hosts.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum != "Acanthocephala"),
@@ -325,7 +333,8 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Change in host size if skipped") +
+  labs(x = "Host number (n)", y = "Change in host mass\nif host (n) skipped", 
+       linetype = NULL, color = NULL) +
   facet_grid(parasite_phylum~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -334,14 +343,52 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
         panel.grid.major.x = element_blank()) 
 ```
 
-### Models
+Perhaps another way to plot this is with a slope graph. Each line is one parasite species. It looks like transmission via paratenic stages (blue lines) may be a little flatter than red lines (transmission via obligate hosts). But in general the patterns are not easy to see...
 
-Let's fit mixed models to test the ideas in toy demo figure. We add "paratenic vs obligate" in two ways. First, after adding host number, and second after adding life cycle length and stage.
+```{r}
+spp <- filter(dat2, assumed_stage == "yes")$Parasite.species
+dx <- select(dat2, Parasite.species, Host_no_fac, Host.no, lcl_max_fac,
+             Facultative, host_bm, host_bm_next, host_bm_prev)%>%
+  filter(!Parasite.species %in% spp)
+
+eggies <- filter(dx, Host.no == 1)%>%
+  mutate(host_bm = host_bm_prev, Host.no = 0)
+
+dx <- bind_rows(dx, eggies)
+dx <- arrange(dx, Parasite.species, Host.no)
+dx <- dx%>%
+  group_by(Parasite.species)%>%
+  # mutate(fac_step = )%>%
+  mutate(fac_step = if_else(lead(Facultative) == "paratenic", "via paratenic",
+                            if_else(Facultative == "paratenic", "via paratenic", "via obligate")))%>%
+  mutate(fac_step = if_else(is.na(fac_step), "via obligate", fac_step))
+
+
+ggplot(filter(dx,lcl_max_fac != "1", Facultative != "progenetic"),
+       aes(x = Host.no, y = host_bm)) +
+  geom_line(aes(group = Parasite.species, color = fac_step),
+            alpha = 0.2) +
+  geom_point(aes(fill = Facultative),
+             color = "white",
+             size = 3, alpha = 0.2,
+             shape = 21) + 
+  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
+  theme(panel.grid.minor = element_blank())
+```
+
+So from visual inspection, paratenic stages are associated with bigger previous hosts, same-sized next hosts, and thus smaller gaps when skipping paratenic hosts. However, these gaps are still larger than if the host were not skipped, suggesting paratenic hosts are ecologically beneficial, but less so than obligate hosts.
+
+### Models - host mass
+
+Let's fit mixed models to test these patterns. First, we will simply compare paratenic and obligate host size.
+
 ```{r}
 library(lme4)
 ```
 
 #### Size of paratenic vs obligate intermediate hosts 
+
+We fit the following models adding these terms in series: 0) int-only, 1) host in cycle, 2) paratenic vs obligate, 3) host and paratenic interaction.
 
 ```{r}
 mm0_bm <- lmer(host_bm ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -352,13 +399,23 @@ mm1.1_bm <- update(mm1_bm, . ~ . + is_paratenic)
 mm1.2_bm <- update(mm1.1_bm, . ~ . + Host_no_fac:is_paratenic)
 ```
 
-At a given stage, paratenic hosts are not smaller/larger than obligate hosts.
+The likelihood ratio tests suggest that second hosts are bigger than first hosts, etc. But the addition of the paratenic vs obligate distinction is marginally significant and the interaction with host stage not at all. Thus, at a given stage, paratenic hosts do not differ in size from obligate hosts.
 
 ```{r}
 anova(mm0_bm, mm1_bm, mm1.1_bm, mm1.2_bm, test = "Chi")
 ```
+When we fit the same series of models, but use life stage (host number x life cycle length) instead of just host number, the results are similar. Paratenic hosts at a given stage are not obviously smaller/larger than obligate hosts.
+
+```{r}
+mm2_bm <- update(mm0_bm, . ~ . + stage_lcl)
+mm2.1_bm <- update(mm2_bm, . ~ . + is_paratenic)
+mm2.2_bm <- update(mm2.1_bm, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bm, mm2_bm, mm2.1_bm, mm2.2_bm, test = "Chi")
+```
 
 #### Previous host mass 
+
+Let's fit the same models to our other response variables, starting with previous host mass.
 
 ```{r}
 mm0_bmp <- lmer(host_bm_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -373,43 +430,77 @@ mm2.1_bmp <- update(mm2_bmp, . ~ . + is_paratenic)
 mm2.2_bmp <- update(mm2.1_bmp, . ~ . + stage_lcl:is_paratenic)
 ```
 
-Distinguishing paratenic and obligate stages improves the model for previous host size.
+Adding "paratenic" to a model with just host number is an improvement as is the interaction between host number and "paratenic".
 
 ```{r}
-anova(mm1_bmp, mm1.1_bmp, mm1.2_bmp, test = "Chi")
+anova(mm0_bmp, mm1_bmp, mm1.1_bmp, mm1.2_bmp, test = "Chi")
 ```
 
-Specifically, previous host size tends to be larger for paratenic stages. 
+This is because previous host size tends to be larger for paratenic stages, particularly in later hosts. 
 
 ```{r}
 summary(mm1.2_bmp)
 ```
-Adding life cycle length does not explain much variation, but adding paratenic vs obligate does.
+Adding life cycle stage does not explain much variation, beyond host number alone, but adding the paratenic vs obligate distinction does.
 
 ```{r}
 anova(mm1_bmp, mm2_bmp, mm2.1_bmp, mm2.2_bmp, test = "Chi")
 ```
 
+Here are the parameters. The parameters for "paratenic" are generally positive, indicating previous host mass is larger for paratenic hosts than obligate intermediate hosts.
+
 ```{r}
 summary(mm2.2_bmp)
 ```
 
-Relatively large phylum effects. Fit same models for just nematodes and cestodes.
+Looking at the random effects, they were relatively large for parasite phylum, possibly indicating that some differences were driven by taxonomy. Therefore, to check for consistency let's fit the same models for just nematodes and cestodes (acanths have too little variation).
+
+The trends are still significant in nematodes when we only compare across host number...
 
 ```{r}
-# mm0_bmp <- lmer(host_bm_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-#               (1|parasite_order) + (1|parasite_class), 
-#             data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
-# mm1_bmp <- update(mm0_bmp, . ~ . + Host_no_fac)
-# mm1.1_bmp <- update(mm1_bmp, . ~ . + is_paratenic)
-# mm1.2_bmp <- update(mm1.1_bmp, . ~ . + Host_no_fac:is_paratenic)
-# 
-# mm2_bmp <- update(mm0_bmp, . ~ . + stage_lcl)
-# mm2.1_bmp <- update(mm2_bmp, . ~ . + is_paratenic)
-# mm2.2_bmp <- update(mm2.1_bmp, . ~ . + stage_lcl:is_paratenic)
+mm0_bmp_nem <- lmer(host_bm_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order) + (1|parasite_class),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
+mm1_bmp_nem <- update(mm0_bmp_nem, . ~ . + Host_no_fac)
+mm1.1_bmp_nem <- update(mm1_bmp_nem, . ~ . + is_paratenic)
+mm1.2_bmp_nem <- update(mm1.1_bmp_nem, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_bmp_nem, mm1_bmp_nem, mm1.1_bmp_nem, mm1.2_bmp_nem, test = "Chi")
 ```
 
-#### Next host mass 
+...as well as when we compare across life cycle stage.
+
+```{r}
+mm2_bmp_nem <- update(mm0_bmp_nem, . ~ . + stage_lcl)
+mm2.1_bmp_nem <- update(mm2_bmp_nem, . ~ . + is_paratenic)
+mm2.2_bmp_nem <- update(mm2.1_bmp_nem, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bmp_nem, mm2_bmp_nem, mm2.1_bmp_nem, mm2.2_bmp_nem, test = "Chi")
+```
+
+By contrast, in cestodes, there is not a main effect of "paratenic" but there is an interaction. Specifically, hosts before paratenics are smaller at late life stages but not earlier ones (not shown).
+
+```{r}
+mm0_bmp_ces <- lmer(host_bm_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Platyhelminthes"))
+mm1_bmp_ces <- update(mm0_bmp_ces, . ~ . + Host_no_fac)
+mm1.1_bmp_ces <- update(mm1_bmp_ces, . ~ . + is_paratenic)
+mm1.2_bmp_ces <- update(mm1.1_bmp_ces, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_bmp_ces, mm1_bmp_ces, mm1.1_bmp_ces, mm1.2_bmp_ces, test = "Chi")
+# summary(mm1.2_bmp_ces)
+```
+
+We get the same result when we break it down further by life cycle stages.
+
+```{r}
+mm2_bmp_ces <- update(mm0_bmp_ces, . ~ . + stage_lcl)
+mm2.1_bmp_ces <- update(mm2_bmp_ces, . ~ . + is_paratenic)
+mm2.2_bmp_ces <- update(mm2.1_bmp_ces, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bmp_ces, mm2_bmp_ces, mm2.1_bmp_ces, mm2.2_bmp_ces, test = "Chi")
+```
+
+#### Next host mass
+
+Moving on to our next response variable, next host mass. Are the hosts after paratenics smaller than expected? We fit the same models again.
 
 ```{r}
 mm0_bmn <- lmer(host_bm_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -424,46 +515,79 @@ mm2.1_bmn <- update(mm2_bmn, . ~ . + is_paratenic)
 mm2.2_bmn <- update(mm2.1_bmn, . ~ . + stage_lcl:is_paratenic)
 ```
 
-Distinguishing paratenic and obligate stages does not improve the model for next host size.
+Distinguishing paratenic and obligate stages does not explain variation beyond that accounted for by host number.
 
 ```{r}
-anova(mm1_bmn, mm1.1_bmn, mm1.2_bmn, test = "Chi")
+anova(mm0_bmn, mm1_bmn, mm1.1_bmn, mm1.2_bmn, test = "Chi")
 ```
 
-Next host size is about the same, regardless of paratenic or obligate host. 
+The parameters indicate that next host size is about the same, regardless of whether the intermediate host is a paratenic or obligate host. 
 
 ```{r}
 summary(mm1.2_bmn)
 ```
-Adding life cycle length explains much variation in next host mass, but adding paratenic vs obligate does not.
+Adding life cycle length is an improvement over just host number (next hosts are smaller in longer cycles), but there is still not much variation explained by distinguishing paratenic vs obligate intermediate hosts. There was a marginal interaction with stage.
 
 ```{r}
 anova(mm1_bmn, mm2_bmn, mm2.1_bmn, mm2.2_bmn, test = "Chi")
 ```
 
-The marginal interaction is because next hosts are sometimes large for paratenics but not always.
+However, the parameters suggest that the hosts after paratenics are sometimes larger and sometimes smaller - there is not a clear trend in the expected direction (smaller next hosts).
 
 ```{r}
 summary(mm2.2_bmn)
 ```
 
-Relatively large phylum effects. Fit same models for just nematodes and cestodes.
+Again, the phylum-level effects were relatively large, so we fit the same models for just nematodes and cestodes.
+
+In nematodes, there was marginally significant main effect for 'paratenic'. It was also in the expected direction (smaller next hosts after a paratenic).
 
 ```{r}
-# mm0_bmn <- lmer(host_bm_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-#               (1|parasite_order) + (1|parasite_class), 
-#             data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
-# mm1_bmn <- update(mm0_bmn, . ~ . + Host_no_fac)
-# mm1.1_bmn <- update(mm1_bmn, . ~ . + is_paratenic)
-# mm1.2_bmn <- update(mm1.1_bmn, . ~ . + Host_no_fac:is_paratenic)
-# 
-# mm2_bmn <- update(mm0_bmn, . ~ . + stage_lcl)
-# mm2.1_bmn <- update(mm2_bmn, . ~ . + is_paratenic)
-# mm2.2_bmn <- update(mm2.1_bmn, . ~ . + stage_lcl:is_paratenic)
+mm0_bmn_nem <- lmer(host_bm_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order) + (1|parasite_class),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
+mm1_bmn_nem <- update(mm0_bmn_nem, . ~ . + Host_no_fac)
+mm1.1_bmn_nem <- update(mm1_bmn_nem, . ~ . + is_paratenic)
+mm1.2_bmn_nem <- update(mm1.1_bmn_nem, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_bmn_nem, mm1_bmn_nem, mm1.1_bmn_nem, mm1.2_bmn_nem, test = "Chi")
 ```
 
+However, when we control for life cycle length, this pattern weakens and is not significant.
+
+```{r}
+mm2_bmn_nem <- update(mm0_bmn_nem, . ~ . + stage_lcl)
+mm2.1_bmn_nem <- update(mm2_bmn_nem, . ~ . + is_paratenic)
+mm2.2_bmn_nem <- update(mm2.1_bmn_nem, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bmn_nem, mm2_bmn_nem, mm2.1_bmn_nem, mm2.2_bmn_nem, test = "Chi")
+```
+
+In cestodes, there was no trend for next hosts to be smaller after a "paratenic", when only considering host number.
+
+```{r}
+mm0_bmn_ces <- lmer(host_bm_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Platyhelminthes"))
+mm1_bmn_ces <- update(mm0_bmn_ces, . ~ . + Host_no_fac)
+mm1.1_bmn_ces <- update(mm1_bmn_ces, . ~ . + is_paratenic)
+mm1.2_bmn_ces <- update(mm1.1_bmn_ces, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_bmn_ces, mm1_bmn_ces, mm1.1_bmn_ces, mm1.2_bmn_ces, test = "Chi")
+# summary(mm1.2_bmn_ces)
+```
+
+When we break it down further by life cycle stages, there is a marginal effect, but it is in the opposite direction than predicted (parameters not printed). 
+
+```{r}
+mm2_bmn_ces <- update(mm0_bmn_ces, . ~ . + stage_lcl)
+mm2.1_bmn_ces <- update(mm2_bmn_ces, . ~ . + is_paratenic)
+mm2.2_bmn_ces <- update(mm2.1_bmn_ces, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bmn_ces, mm2_bmn_ces, mm2.1_bmn_ces, mm2.2_bmn_ces, test = "Chi")
+```
+
+These models suggest that there is not a consistent trend, across life stage and taxa, for smaller hosts to come after paratenic hosts.
 
 #### Change in mass when skipping intermediate hosts
+
+Finally, we consider the "gap" - how big is the difference between hosts if an intermediate host is skipped?
 
 ```{r}
 mm0_bms <- lmer(delta_host_bm_skip ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -478,51 +602,80 @@ mm2.1_bms <- update(mm2_bms, . ~ . + is_paratenic)
 mm2.2_bms <- update(mm2.1_bms, . ~ . + stage_lcl:is_paratenic)
 ```
 
-Distinguishing paratenic and obligate stages is a moderate improvement.
+Fitting the same series of models, we find that distinguishing paratenic and obligate hosts is a moderate improvement, mainly for the main effect.
 
 ```{r}
 anova(mm1_bms, mm1.1_bms, mm1.2_bms, test = "Chi")
 ```
 
-The change in host mass is smaller with paratenic hosts, particularly later in the life cycle.
+Looking at the parameters, we see that paratenic hosts bridge a smaller gap than obligate hosts. The size of the gap tends to shrink with life cycle progression.
 
 ```{r}
 summary(mm1.2_bms)
 ```
-Adding life cycle length explains some variation in delta host mass, as does adding paratenic vs obligate.
+Gaps also decrease in longer life cycles, so let's add life cycle length to the model. Even after accounting for host number and life cycle length, adding "paratenic" is significant.
 
 ```{r}
 anova(mm1_bms, mm2_bms, mm2.1_bms, mm2.2_bms, test = "Chi")
 ```
 
-The interaction indicates the 'gap' is smaller longer life cycles.
+The gaps tend to be smaller for paratenic hosts, particularly at later life stages.
 
 ```{r}
 summary(mm2.2_bms)
 ```
 
-Relatively large phylum effects. Fit same models for just nematodes and cestodes.
+The phylum effects were not so large, but we can still fit models for nematodes and cestodes separately.
+
+In nematodes, there was still a tendency for there to be smaller gaps for paratenic than obligate hosts, particularly in later hosts.
 
 ```{r}
-# mm0_bms <- lmer(host_bm_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-#               (1|parasite_order) + (1|parasite_class), 
-#             data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
-# mm1_bms <- update(mm0_bms, . ~ . + Host_no_fac)
-# mm1.1_bms <- update(mm1_bms, . ~ . + is_paratenic)
-# mm1.2_bms <- update(mm1.1_bms, . ~ . + Host_no_fac:is_paratenic)
-# 
-# mm2_bms <- update(mm0_bms, . ~ . + stage_lcl)
-# mm2.1_bms <- update(mm2_bms, . ~ . + is_paratenic)
-# mm2.2_bms <- update(mm2.1_bms, . ~ . + stage_lcl:is_paratenic)
+mm0_bms_nem <- lmer(delta_host_bm_skip ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order) + (1|parasite_class),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
+mm1_bms_nem <- update(mm0_bms_nem, . ~ . + Host_no_fac)
+mm1.1_bms_nem <- update(mm1_bms_nem, . ~ . + is_paratenic)
+mm1.2_bms_nem <- update(mm1.1_bms_nem, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_bms_nem, mm1_bms_nem, mm1.1_bms_nem, mm1.2_bms_nem, test = "Chi")
 ```
 
+Also, when we account for life cycle length.
 
+```{r}
+mm2_bms_nem <- update(mm0_bms_nem, . ~ . + stage_lcl)
+mm2.1_bms_nem <- update(mm2_bms_nem, . ~ . + is_paratenic)
+mm2.2_bms_nem <- update(mm2.1_bms_nem, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bms_nem, mm2_bms_nem, mm2.1_bms_nem, mm2.2_bms_nem, test = "Chi")
+```
 
+By contrast, in cestodes, the gap covered by paratenic hosts is not smaller than in obligate hosts.
 
+```{r}
+mm0_bms_ces <- lmer(delta_host_bm_skip ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Platyhelminthes"))
+mm1_bms_ces <- update(mm0_bms_ces, . ~ . + Host_no_fac)
+mm1.1_bms_ces <- update(mm1_bms_ces, . ~ . + is_paratenic)
+mm1.2_bms_ces <- update(mm1.1_bms_ces, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_bms_ces, mm1_bms_ces, mm1.1_bms_ces, mm1.2_bms_ces, test = "Chi")
+# summary(mm1.2_bms_ces)
+```
+
+When we break it down further by life cycle stage, we find a marginal "paratenic" by stage interaction, because cestode paratenic hosts bridge a smaller gap in later life cycle stages.
+
+```{r}
+mm2_bms_ces <- update(mm0_bms_ces, . ~ . + stage_lcl)
+mm2.1_bms_ces <- update(mm2_bms_ces, . ~ . + is_paratenic)
+mm2.2_bms_ces <- update(mm2.1_bms_ces, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_bms_ces, mm2_bms_ces, mm2.1_bms_ces, mm2.2_bms_ces, test = "Chi")
+# summary(mm2.2_bms_ces)
+```
+
+Overall, these results suggest that paratenic intermediate hosts are slightly less ecologically beneficial than obligate intermediate hosts: they bridge a smaller gap in host mass. Let's now move on to our next ecological proxy, host trophic level.
 
 # Trophic level
 
-We can start with looking at host trophic level. First, we simply plot host trophic level across life cycle stages. We are only plotting intermediate hosts. Paratenic hosts do not seem to be at a consistently higher or lower trophic level than obligate hosts.
+To start, we simply plot host trophic level across life cycle stage (only intermediate hosts). Paratenic hosts do not seem to be at a consistently higher or lower trophic level than obligate intermediate hosts.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -531,7 +684,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Host size") +
+  labs(x = "Host number", y = "Host TL", color = NULL) +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -540,9 +693,9 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.major.x = element_blank()) 
 ```
 
-### Previous host mass
+### Previous host trophic level
 
-What about the host before the paratenic host? First, we can look at this in general (not separated by life cycle length). We see that the host before infecting a paratenic host tends to be at a higher trophic level than an obligate host. This is consistent with our toy figure, pattern (1). This also seems to increase with life cycle progression, suggesting paratenics may fill smaller gaps in later life stages.
+What about the host before the paratenic host? As for host mass, we would expect the host before a paratenic host to be at a higher trophic level (pattern 1 in toy figure). This pattern is observed at later life stages. However, we can also see that there is no variation in previous host TL for the first host. These values represent propagule stages which were assumed to always be at TL 1.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -551,7 +704,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
+  labs(x = "Host number (n)", y = "Previous host (n-1) TL", color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
@@ -559,16 +712,16 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.major.x = element_blank())
 ```
 
-Since the change in host size varies across life cycle lengths, we should break this apart by life cycle length. At any given life stage, the host before a paratenic host tends to be larger.
+We can therefore exclude the first host stage when we break the data down by life cycle stage. Only at the later life stages are hosts before paratenics at a higher trophic level than obligates.
 
 ```{r}
-ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
+ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "1"),
        aes(x = Host_no_fac, y = host_tl_prev, color = is_paratenic)) +
   geom_boxplot(outlier.colour = NA) +
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
+  labs(x = "Host number (n)", y = "Previous host (n-1) TL", color = NULL) +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -576,16 +729,17 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank()) 
 ```
-This pattern is not quite as clear once we control for parasite phylum.
+This pattern looks similar across the two main helminth groups.
 
 ```{r}
-ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum != "Acanthocephala"),
+ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive",
+              Host_no_fac != "1", parasite_phylum != "Acanthocephala"),
        aes(x = Host_no_fac, y = host_tl_prev, color = is_paratenic)) +
   geom_boxplot(outlier.colour = NA) +
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
+  labs(x = "Host number (n)", y = "Previous host (n-1) TL", color = NULL) +
   facet_grid(parasite_phylum~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -594,9 +748,9 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
         panel.grid.major.x = element_blank()) 
 ```
 
-### Next host mass
+### Next host trophic level
 
-What about the size of the next host? After a paratenic host, do parasite infect a smaller host (pattern 2 in the demo figure)? It does not look like it when we look across life cycle lengths...
+What about the TL of the next host? Is it smaller after a paratenic host (pattern 2 in the demo figure)? It looks like it, at least in later life stages.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -605,7 +759,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n+1") +
+  labs(x = "Host number (n)", y = "Next host (n+1) TL", color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
@@ -613,7 +767,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.major.x = element_blank()) 
 ```
 
-nor within life cycle lengths.
+And this looks fairly consistent across life cycle stages, though some stages may break the trends. For example, in long cycles (3+ hosts), the third host is at a higher TL when following a second paratenic host (perhaps dead end hosts?).
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
@@ -622,7 +776,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n+1") +
+  labs(x = "Host number (n)", y = "Next host (n+1) TL", color = NULL) +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -630,7 +784,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank()) 
 ```
-Once we control for parasite phylum, there might be a slight decrease.
+The patterns look fairly consistent across groups.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum != "Acanthocephala"),
@@ -639,7 +793,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number, n", y = "Host size, n+1") +
+  labs(x = "Host number (n)", y = "Next host (n+1) TL", color = NULL) +
   facet_grid(parasite_phylum~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -648,44 +802,88 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
         panel.grid.major.x = element_blank()) 
 ```
 
-### Gap when skipping hosts
+### Gap in trophic level when skipping hosts
 
-Now how big is the 'gap' that paratenic hosts fill? Is it smaller than obligate hosts? Across life cycle lengths, it does look like fill a smaller gap.
+How big is difference in host trophic levels when a paratenic host is skipped? Is it smaller than obligate hosts (pattern 3 in toy figure)? In later hosts, the trophic "gap" seems smaller with paratenic hosts than with obligate hosts. However, the trophic gaps to and from paratenic (and obligate) intermediate hosts (solid and dashed lines) are still smaller than if they were skipped.
 
 ```{r}
+dx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
+  group_by(Host_no_fac)%>%
+  summarize(dbm = median(delta_host_tl_prev, na.rm = T),
+            dbm_upr = quantile(delta_host_tl_prev, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_tl_prev, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n-1")
+
+dxx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
+  group_by(Host_no_fac)%>%
+  summarize(dbm = median(delta_host_tl_next, na.rm = T),
+            dbm_upr = quantile(delta_host_tl_next, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_tl_next, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n+1")
+dx <- bind_rows(dx, dxx)
+
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
        aes(x = Host_no_fac, y = delta_host_tl_skip, color = is_paratenic)) +
   geom_boxplot(outlier.colour = NA) +
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Change in host size if skipped") +
+  labs(x = "Host number (n)", y = "Change in host TL\nif host (n) skipped", 
+       linetype = NULL, color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
         panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) 
+        panel.grid.major.x = element_blank()) +
+  geom_crossbar(data = dx, 
+                aes(x = hni, y = dbm, ymin = dbm_lwr, ymax = dbm_upr, linetype = step),
+                color = NA, fill = "gray", alpha = 0.25, width = 0.6) +
+  geom_segment(data = dx, 
+               aes(x = hni-0.3, xend = hni+0.3, y = dbm, yend = dbm, linetype = step), 
+               color = "black")
 ```
 
-And within stages.
+The pattern appears to be the same when splitting the data by life cycle length...
 
 ```{r}
+dx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
+  group_by(Host_no_fac, lcl_max_fac)%>%
+  summarize(dbm = median(delta_host_tl_prev, na.rm = T),
+            dbm_upr = quantile(delta_host_tl_prev, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_tl_prev, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n-1")
+
+dxx <- filter(dat2, lcl_max_fac != "1", Def.int != "Definitive")%>%
+  group_by(Host_no_fac, lcl_max_fac)%>%
+  summarize(dbm = median(delta_host_tl_next, na.rm = T),
+            dbm_upr = quantile(delta_host_tl_next, na.rm = T, probs = 0.75),
+            dbm_lwr = quantile(delta_host_tl_next, na.rm = T, probs = 0.25))%>%
+  mutate(hni = as.integer(Host_no_fac), step = "Gap to host n+1")
+dx <- bind_rows(dx, dxx)
+
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"),
        aes(x = Host_no_fac, y = delta_host_tl_skip, color = is_paratenic)) +
   geom_boxplot(outlier.colour = NA) +
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Change in host size if skipped") +
   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
+  labs(x = "Host number (n)", y = "Change in host TL\nif host (n) skipped", 
+       linetype = NULL, color = NULL) +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
         strip.background = element_rect(fill = 'grey95'),
         panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) 
+        panel.grid.major.x = element_blank()) +
+  geom_crossbar(data = dx, 
+                aes(x = hni, y = dbm, ymin = dbm_lwr, ymax = dbm_upr, linetype = step),
+                color = NA, fill = "gray", alpha = 0.25, width = 0.6) +
+  geom_segment(data = dx, 
+               aes(x = hni-0.3, xend = hni+0.3, y = dbm, yend = dbm, linetype = step), 
+               color = "black")
 ```
 
-Pattern is less clear when we look at each phylum separately.
+...and by phylum.
 
 ```{r}
 ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum != "Acanthocephala"),
@@ -694,7 +892,7 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
   geom_jitter(alpha = 0.75, size = 0.75,
              position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
              ) +
-  labs(x = "Host number", y = "Change in host size if skipped") +
+  labs(x = "Host number", y = "Change in host TL if skipped") +
   facet_grid(parasite_phylum~lcl_max_fac, scales = 'free_x', space = 'free_x') +
   theme(legend.background = element_rect(color = 'black'),
         strip.text = element_text(face = "bold"),
@@ -703,11 +901,45 @@ ggplot(filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum
         panel.grid.major.x = element_blank()) 
 ```
 
-### Models
+We can also try a slope graph, with the expectation that lines should be flatter for paratenic stages. The trends are hard to see here.
 
-Let's fit mixed models to test the ideas in toy demo figure. We add "paratenic vs obligate" in two ways. First, after adding host number, and second after adding life cycle length and stage.
+```{r}
+spp <- filter(dat2, assumed_stage == "yes")$Parasite.species
+dx <- select(dat2, Parasite.species, Host_no_fac, Host.no, lcl_max_fac,
+             Facultative, host_tl, host_tl_next, host_tl_prev)%>%
+  filter(!Parasite.species %in% spp)
 
-#### TL of paratenic vs obligate intermediate hosts 
+eggies <- filter(dx, Host.no == 1)%>%
+  mutate(host_tl = host_tl_prev, Host.no = 0)
+
+dx <- bind_rows(dx, eggies)
+dx <- arrange(dx, Parasite.species, Host.no)
+dx <- dx%>%
+  group_by(Parasite.species)%>%
+  # mutate(fac_step = )%>%
+  mutate(fac_step = if_else(lead(Facultative) == "paratenic", "via paratenic",
+                            if_else(Facultative == "paratenic", "via paratenic", "via obligate")))%>%
+  mutate(fac_step = if_else(is.na(fac_step), "via obligate", fac_step))
+
+
+ggplot(filter(dx,lcl_max_fac != "1", Facultative != "progenetic"),
+       aes(x = Host.no, y = host_tl)) +
+  geom_line(aes(group = Parasite.species, color = fac_step),
+            alpha = 0.2) +
+  geom_point(aes(fill = Facultative),
+             color = "white",
+             size = 3, alpha = 0.2,
+             shape = 21) + 
+  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
+  theme(panel.grid.minor = element_blank())
+```
+
+
+### Models - TL
+
+We fit the same series of taxonomic mixed models as for host mass, but now with host trophic level.
+
+#### Trophic level of paratenic vs obligate intermediate hosts 
 
 ```{r}
 mm0_tl <- lmer(host_tl ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -718,18 +950,28 @@ mm1.1_tl <- update(mm1_tl, . ~ . + is_paratenic)
 mm1.2_tl <- update(mm1.1_tl, . ~ . + Host_no_fac:is_paratenic)
 ```
 
-At a given stage, paratenic hosts are not at a higher or lower trophic level than obligate hosts.
+The likelihood ratio tests suggest that trophic level increases with host number. But the addition of the paratenic vs obligate distinction is not significant, either by itself or as an interaction. Thus, the paratenic and obligate intermediate hosts appear to be at similar trophic levels, given their position in the life cycle.
 
 ```{r}
 anova(mm0_tl, mm1_tl, mm1.1_tl, mm1.2_tl, test = "Chi")
 ```
+When we fit the same series of models, but use life stage (host number x life cycle length) instead of just host number, the results are similar. Paratenic hosts at a given stage are not higher or lower in the trophic pyramid.
 
-#### Previous host TL 
+```{r}
+mm2_tl <- update(mm0_tl, . ~ . + stage_lcl)
+mm2.1_tl <- update(mm2_tl, . ~ . + is_paratenic)
+mm2.2_tl <- update(mm2.1_tl, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tl, mm2_tl, mm2.1_tl, mm2.2_tl, test = "Chi")
+```
+
+#### Previous host trophic level
+
+We fit the same models for previous host trophic level. For this variable, there was no variation at the first host stage - all propagules are at the same trophic level. Therefore, we only consider previous host trophic level for second and third hosts.
 
 ```{r}
 mm0_tlp <- lmer(host_tl_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
               (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
-            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive"))
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", Host_no_fac != "1"))
 mm1_tlp <- update(mm0_tlp, . ~ . + Host_no_fac)
 mm1.1_tlp <- update(mm1_tlp, . ~ . + is_paratenic)
 mm1.2_tlp <- update(mm1.1_tlp, . ~ . + Host_no_fac:is_paratenic)
@@ -739,43 +981,78 @@ mm2.1_tlp <- update(mm2_tlp, . ~ . + is_paratenic)
 mm2.2_tlp <- update(mm2.1_tlp, . ~ . + stage_lcl:is_paratenic)
 ```
 
-Distinguishing paratenic and obligate stages improves the model for previous host size.
+Adding "paratenic" alone to a model with just host number is not improvement, but the interaction between host number and "paratenic" is modestly significant.
 
 ```{r}
-anova(mm1_tlp, mm1.1_tlp, mm1.2_tlp, test = "Chi")
+anova(mm0_tlp, mm1_tlp, mm1.1_tlp, mm1.2_tlp, test = "Chi")
 ```
-
-Specifically, previous host size tends to be larger for paratenic stages. 
+Previous host trophic level tends to be higher for paratenic hosts than obligate intermediate hosts, but only at later life stages.
 
 ```{r}
 summary(mm1.2_tlp)
 ```
-Adding life cycle length does not explain much variation, but adding paratenic vs obligate does.
+The same trend is observed when we split by life cycle stage instead of just host number.
 
 ```{r}
 anova(mm1_tlp, mm2_tlp, mm2.1_tlp, mm2.2_tlp, test = "Chi")
 ```
 
+Here are the parameters. They suggest that previous host TL is only larger for paratenic hosts than obligate intermediate hosts at the latest life stages.
+
 ```{r}
 summary(mm2.2_tlp)
 ```
 
-Relatively large phylum effects. Fit same models for just nematodes and cestodes.
+The random effects were small, so it is not obvious that the patterns differ by parasite phylum. But to check for consistency let's fit the same models for just nematodes and cestodes (acanths have too little variation).
+
+The trends are still significant in nematodes when we only compare across host number...
 
 ```{r}
-# mm0_tlp <- lmer(host_tl_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-#               (1|parasite_order) + (1|parasite_class), 
-#             data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
-# mm1_tlp <- update(mm0_tlp, . ~ . + Host_no_fac)
-# mm1.1_tlp <- update(mm1_tlp, . ~ . + is_paratenic)
-# mm1.2_tlp <- update(mm1.1_tlp, . ~ . + Host_no_fac:is_paratenic)
-# 
-# mm2_tlp <- update(mm0_tlp, . ~ . + stage_lcl)
-# mm2.1_tlp <- update(mm2_tlp, . ~ . + is_paratenic)
-# mm2.2_tlp <- update(mm2.1_tlp, . ~ . + stage_lcl:is_paratenic)
+mm0_tlp_nem <- lmer(host_tl_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order) + (1|parasite_class),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", 
+                          Host_no_fac != "1", parasite_phylum == "Nematoda"))
+mm1_tlp_nem <- update(mm0_tlp_nem, . ~ . + Host_no_fac)
+mm1.1_tlp_nem <- update(mm1_tlp_nem, . ~ . + is_paratenic)
+mm1.2_tlp_nem <- update(mm1.1_tlp_nem, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_tlp_nem, mm1_tlp_nem, mm1.1_tlp_nem, mm1.2_tlp_nem, test = "Chi")
 ```
 
-#### Next host TL 
+...as well as when we compare across life cycle stage.
+
+```{r}
+mm2_tlp_nem <- update(mm0_tlp_nem, . ~ . + stage_lcl)
+mm2.1_tlp_nem <- update(mm2_tlp_nem, . ~ . + is_paratenic)
+mm2.2_tlp_nem <- update(mm2.1_tlp_nem, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tlp_nem, mm2_tlp_nem, mm2.1_tlp_nem, mm2.2_tlp_nem, test = "Chi")
+```
+
+By contrast, in cestodes, there is not an interaction between "paratenic" and host number, suggesting previous host TL is not larger for paratenic host compared to obligate hosts.
+
+```{r}
+mm0_tlp_ces <- lmer(host_tl_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", 
+                          Host_no_fac != "1", parasite_phylum == "Platyhelminthes"))
+mm1_tlp_ces <- update(mm0_tlp_ces, . ~ . + Host_no_fac)
+mm1.1_tlp_ces <- update(mm1_tlp_ces, . ~ . + is_paratenic)
+mm1.2_tlp_ces <- update(mm1.1_tlp_ces, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_tlp_ces, mm1_tlp_ces, mm1.1_tlp_ces, mm1.2_tlp_ces, test = "Chi")
+# summary(mm1.2_tlp_ces)
+```
+
+We get the same result when we break it down further by life cycle stages.
+
+```{r}
+mm2_tlp_ces <- update(mm0_tlp_ces, . ~ . + stage_lcl)
+mm2.1_tlp_ces <- update(mm2_tlp_ces, . ~ . + is_paratenic)
+mm2.2_tlp_ces <- update(mm2.1_tlp_ces, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tlp_ces, mm2_tlp_ces, mm2.1_tlp_ces, mm2.2_tlp_ces, test = "Chi")
+```
+
+#### Next host trophic level
+
+Moving on to next host trophic level. Are the hosts after paratenics at a lower TL? We fit the same models again.
 
 ```{r}
 mm0_tln <- lmer(host_tl_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -790,46 +1067,78 @@ mm2.1_tln <- update(mm2_tln, . ~ . + is_paratenic)
 mm2.2_tln <- update(mm2.1_tln, . ~ . + stage_lcl:is_paratenic)
 ```
 
-Distinguishing paratenic and obligate stages does not improve the model for next host size.
+Distinguishing paratenic and obligate intermediate hosts is an improvement, but the host number by "paratenic" stage is not better.
 
 ```{r}
-anova(mm1_tln, mm1.1_tln, mm1.2_tln, test = "Chi")
+anova(mm0_tln, mm1_tln, mm1.1_tln, mm1.2_tln, test = "Chi")
 ```
 
-Next host size is about the same, regardless of paratenic or obligate host. 
+The model parameters indicate that next host trophic level tends to be smaller for paratenic stages, though there is some variability in the magnitude. 
 
 ```{r}
 summary(mm1.2_tln)
 ```
-Adding life cycle length explains much variation in next host mass, but adding paratenic vs obligate does not.
+Adding life cycle length is an improvement over just host number (trophic level changes differ among life cycle lengths). The main effect of "paratenic" is still significant, while the interaction with stage was marginal.
 
 ```{r}
 anova(mm1_tln, mm2_tln, mm2.1_tln, mm2.2_tln, test = "Chi")
 ```
 
-The marginal interaction is because next hosts are sometimes large for paratenics but not always.
+The model parameters indicate that hosts following paratenics are at a lower trophic level than those following obligates.
 
 ```{r}
 summary(mm2.2_tln)
 ```
 
-Relatively large phylum effects. Fit same models for just nematodes and cestodes.
+The phylum-level effects were moderate, so we fit the same models for nematodes and cestodes separately.
+
+In nematodes, the main effect for 'paratenic' was still significant. It was also in the expected direction (lower TL next hosts after a paratenic).
 
 ```{r}
-# mm0_tln <- lmer(host_tl_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-#               (1|parasite_order) + (1|parasite_class), 
-#             data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
-# mm1_tln <- update(mm0_tln, . ~ . + Host_no_fac)
-# mm1.1_tln <- update(mm1_tln, . ~ . + is_paratenic)
-# mm1.2_tln <- update(mm1.1_tln, . ~ . + Host_no_fac:is_paratenic)
-# 
-# mm2_tln <- update(mm0_tln, . ~ . + stage_lcl)
-# mm2.1_tln <- update(mm2_tln, . ~ . + is_paratenic)
-# mm2.2_tln <- update(mm2.1_tln, . ~ . + stage_lcl:is_paratenic)
+mm0_tln_nem <- lmer(host_tl_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order) + (1|parasite_class),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
+mm1_tln_nem <- update(mm0_tln_nem, . ~ . + Host_no_fac)
+mm1.1_tln_nem <- update(mm1_tln_nem, . ~ . + is_paratenic)
+mm1.2_tln_nem <- update(mm1.1_tln_nem, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_tln_nem, mm1_tln_nem, mm1.1_tln_nem, mm1.2_tln_nem, test = "Chi")
+# summary(mm1.2_tln_nem)
 ```
 
+Also after controlling for life cycle length.
 
-#### Change in mass when skipping intermediate hosts
+```{r}
+mm2_tln_nem <- update(mm0_tln_nem, . ~ . + stage_lcl)
+mm2.1_tln_nem <- update(mm2_tln_nem, . ~ . + is_paratenic)
+mm2.2_tln_nem <- update(mm2.1_tln_nem, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tln_nem, mm2_tln_nem, mm2.1_tln_nem, mm2.2_tln_nem, test = "Chi")
+```
+
+A similar pattern was observed in cestodes. The main effect suggested that next hosts were at a lower trophic level for "paratenics".
+
+```{r}
+mm0_tln_ces <- lmer(host_tl_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Platyhelminthes"))
+mm1_tln_ces <- update(mm0_tln_ces, . ~ . + Host_no_fac)
+mm1.1_tln_ces <- update(mm1_tln_ces, . ~ . + is_paratenic)
+mm1.2_tln_ces <- update(mm1.1_tln_ces, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_tln_ces, mm1_tln_ces, mm1.1_tln_ces, mm1.2_tln_ces, test = "Chi")
+# summary(mm1.2_tln_ces)
+```
+
+The trend is the same when we break it down further by life cycle stages. 
+
+```{r}
+mm2_tln_ces <- update(mm0_tln_ces, . ~ . + stage_lcl)
+mm2.1_tln_ces <- update(mm2_tln_ces, . ~ . + is_paratenic)
+mm2.2_tln_ces <- update(mm2.1_tln_ces, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tln_ces, mm2_tln_ces, mm2.1_tln_ces, mm2.2_tln_ces, test = "Chi")
+```
+
+#### Change in trophic level when skipping intermediate hosts
+
+Finally, we consider the "gap" - how big is the difference between host trophic level if an intermediate host is skipped?
 
 ```{r}
 mm0_tls <- lmer(delta_host_tl_skip ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
@@ -844,71 +1153,115 @@ mm2.1_tls <- update(mm2_tls, . ~ . + is_paratenic)
 mm2.2_tls <- update(mm2.1_tls, . ~ . + stage_lcl:is_paratenic)
 ```
 
-Distinguishing paratenic and obligate stages is a moderate improvement.
+Distinguishing paratenic and obligate hosts is a moderate improvement, particularly when we account for the interaction between "paratenic" and host number.
 
 ```{r}
 anova(mm1_tls, mm1.1_tls, mm1.2_tls, test = "Chi")
 ```
 
-The change in host mass is smaller with paratenic hosts, particularly later in the life cycle.
+Looking at the parameters, we see that paratenic hosts bridge a smaller trophic level gap than obligate hosts, especially at later life stages.
 
 ```{r}
-summary(mm1.1_tls)
+summary(mm1.2_tls)
 ```
-Adding life cycle length explains some variation in delta host mass, as does adding paratenic vs obligate.
+Gaps also decrease in longer life cycles, so let's add life cycle length to the model. Even after accounting for host number and life cycle length, adding "paratenic" is significant, while the interaction is now less significant.
 
 ```{r}
 anova(mm1_tls, mm2_tls, mm2.1_tls, mm2.2_tls, test = "Chi")
 ```
 
-The interaction indicates the 'gap' is smaller longer life cycles.
+The model parameters suggest that the gaps covered by paratenic hosts are consistently smaller than those covered by obligate hosts.
 
 ```{r}
 summary(mm2.2_tls)
 ```
 
-Relatively large phylum effects. Fit same models for just nematodes and cestodes.
+The phylum effects were not that large, but we can still fit models for nematodes and cestodes separately.
+
+In nematodes, there was still a tendency for there to be smaller gaps for paratenic than obligate hosts, particularly in later hosts.
 
 ```{r}
-# mm0_tls <- lmer(host_tl_prev ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-#               (1|parasite_order) + (1|parasite_class), 
-#             data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
-# mm1_tls <- update(mm0_tls, . ~ . + Host_no_fac)
-# mm1.1_tls <- update(mm1_tls, . ~ . + is_paratenic)
-# mm1.2_tls <- update(mm1.1_tls, . ~ . + Host_no_fac:is_paratenic)
-# 
-# mm2_tls <- update(mm0_tls, . ~ . + stage_lcl)
-# mm2.1_tls <- update(mm2_tls, . ~ . + is_paratenic)
-# mm2.2_tls <- update(mm2.1_tls, . ~ . + stage_lcl:is_paratenic)
+mm0_tls_nem <- lmer(delta_host_tl_skip ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order) + (1|parasite_class),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Nematoda"))
+mm1_tls_nem <- update(mm0_tls_nem, . ~ . + Host_no_fac)
+mm1.1_tls_nem <- update(mm1_tls_nem, . ~ . + is_paratenic)
+mm1.2_tls_nem <- update(mm1.1_tls_nem, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_tls_nem, mm1_tls_nem, mm1.1_tls_nem, mm1.2_tls_nem, test = "Chi")
 ```
 
+Also, when we account for life cycle length, though the interaction is now less important.
+
+```{r}
+mm2_tls_nem <- update(mm0_tls_nem, . ~ . + stage_lcl)
+mm2.1_tls_nem <- update(mm2_tls_nem, . ~ . + is_paratenic)
+mm2.2_tls_nem <- update(mm2.1_tls_nem, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tls_nem, mm2_tls_nem, mm2.1_tls_nem, mm2.2_tls_nem, test = "Chi")
+```
+
+By contrast, in cestodes, the trophic gap covered by paratenic hosts is not smaller than in obligate hosts.
+
+```{r}
+mm0_tls_ces <- lmer(delta_host_tl_skip ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) +
+              (1|parasite_order),
+            data = filter(dat2, lcl_max_fac != "1", Def.int != "Definitive", parasite_phylum == "Platyhelminthes"))
+mm1_tls_ces <- update(mm0_tls_ces, . ~ . + Host_no_fac)
+mm1.1_tls_ces <- update(mm1_tls_ces, . ~ . + is_paratenic)
+mm1.2_tls_ces <- update(mm1.1_tls_ces, . ~ . + Host_no_fac:is_paratenic)
+anova(mm0_tls_ces, mm1_tls_ces, mm1.1_tls_ces, mm1.2_tls_ces, test = "Chi")
+# summary(mm1.2_tls_ces)
+```
+
+When we break it down further by life cycle stage, we do not find a significantly smaller gap for paratenic hosts.
+
+```{r}
+mm2_tls_ces <- update(mm0_tls_ces, . ~ . + stage_lcl)
+mm2.1_tls_ces <- update(mm2_tls_ces, . ~ . + is_paratenic)
+mm2.2_tls_ces <- update(mm2.1_tls_ces, . ~ . + stage_lcl:is_paratenic)
+anova(mm1_tls_ces, mm2_tls_ces, mm2.1_tls_ces, mm2.2_tls_ces, test = "Chi")
+# summary(mm2.2_bms_ces)
+```
+
+# Conclusions
+
+Overall, trends are consistent with the hypotheses in our toy figure. Before a paratenic stage, worms often infect larger hosts, whereas after a paratenic stage, they infect lower trophic level hosts. Consequently, the trophic 'gap' covered by paratenic hosts is smaller than that covered by intermediate hosts. Two caveats to these statements, though, are that the trends were taxon-contingent (clearer in nematodes) and weak (i.e. the gap covered by paratenic hosts was not that much smaller than covered by obligate hosts). This weakness suggests that paratenic hosts are still ecologically valuable. The trophic 'gaps' on either side of a paratenic host are much smaller than if the host were not infected at all.
+
+
+Further additions...
+
+-R2 tables for models
+-Figures with error bars
+-Measure trophic gap relative to free-living predator-prey ratios (prelim steps below)
 
 
 
 
+# Predator-prey mass ratios
 
+```{r}
+# also make a data table for when parasites skip a host in their cycle
+dat3 <- dat2%>%
+  group_by(Parasite.species)%>%
+  mutate(skipper = Host.no - lag(Host.no), # for filtering later
+         step_in_cycle = if_else(Host.no == 2, "egg to 2nd",
+                             if_else(Host.no==3, "1st to 3rd", "2nd to 4th" )),
+         fac_step = if_else(fac_step == "from paratenic" & lag(fac_step == "to paratenic"),
+                            "skip paratenic", "skip obligate")
+         )%>%
+  mutate(res_g = if_else(skipper == 1, lag(res_g), res_g),
+         res_tl = if_else(skipper == 1, lag(res_tl), res_tl))%>%
+  # select(Parasite.species, Host.no, skipper, fac_step, fac_step2, skip_step, con_g, res_g)
+  filter(!is.na(skipper))%>%
+  mutate(skipper = "Skip a host")
 
+dat3 <- dat3%>%
+  mutate(delta_host_bm = con_g - res_g,
+         delta_host_tl = con_tl - res_tl)
 
-Maybe include the 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### Body mass
-
+dat3 <- bind_rows(dat2, dat3)
+dat3 <- mutate(dat3, fac_step = fct_relevel(fac_step, c("among obligate hosts", "to paratenic", "from paratenic", "skip obligate", "skip paratenic")),
+               step_in_cycle = fct_relevel(step_in_cycle, c("egg to 1st", "egg to 2nd", "1st to 2nd", "1st to 3rd", "2nd to 3rd", "2nd to 4th", "3rd to 4th")))
+```
 
 ```{r}
 brose <- read.csv(file = "../data/283_2_FoodWebDataBase_2018_12_10.csv", header = T)
@@ -976,7 +1329,7 @@ to_plot <- pp_ma$regression.results
 ```{r}
 ggplot(slice_sample(brose, prop = 0.15), aes(x = res_g, y = con_g)) +
   geom_point(alpha = 0.1, color = "darkgray") +
-  geom_abline(intercept = filter(to_plot, Method == "OLS")$Intercept, slope = filter(to_plot, Method == "OLS")$Slope, 
+  geom_abline(intercept = filter(to_plot, Method == "OLS")$Intercept, slope = filter(to_plot, Method == "OLS")$Slope,
               linetype = "solid") +
   geom_abline(intercept = filter(to_plot, Method == "MA")$Intercept, slope = filter(to_plot, Method == "MA")$Slope,
               linetype = "dashed") +
@@ -990,388 +1343,12 @@ ggplot(slice_sample(brose, prop = 0.15), aes(x = res_g, y = con_g)) +
   labs(x = "Prey mass (g)", y = "Predator mass (g)", color = NULL)
 ```
 
-Now we can split that plot by life cycle length to see how worms with different life cycle compare. Worms with longer life cycles fall closer to the regression line, suggesting their next host predators are a more typical size, given their current host.
-
-```{r}
-lc_labs <- c(
-  `1` = "to 1st host",
-  `2` = "to 2nd",
-  `3` = "to 3rd",
-  `4` = "to 4th or 5th"
-)
-
-f2a <- ggplot(slice_sample(brose, prop = 0.15), 
-              aes(x = res_g, y = con_g)) +
-  geom_point(alpha = 0.05, color = "darkgray", size = 1) +
-  geom_point(data = filter(dat3, lcl_max_fac != "1"),
-             aes(x = exp(res_g), y = exp(con_g), color = skipper),
-             alpha = 0.2) +
-  geom_abline(intercept = filter(to_plot, Method == "MA")$Intercept, 
-              slope = filter(to_plot, Method == "MA")$Slope,
-              linetype = "dashed") +
-  facet_grid(~Host_no_fac, scales = 'free_x', space = 'free_x',
-             labeller = labeller(Host_no_fac = lc_labs)) +
-  coord_cartesian(xlim = c( exp( quantile(brose$log_res_g, probs = 0.001) ), exp( quantile(brose$log_res_g, probs = 0.9999))),
-                  ylim = c( exp( quantile(brose$log_con_g, probs = 0.001) ), exp( quantile(brose$log_con_g, probs = 0.9999)))) +
-  scale_x_log10(labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  scale_y_log10(labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  # scale_color_brewer(palette = "Reds", direction = -1) + 
-  # labels = c("egg to 1st", "1st to 2nd", "2nd to 3rd", "3rd to 4th")) +
-  guides(color = guide_legend(override.aes = list(alpha = 1, size = 3))) +
-  theme(legend.background = element_rect(color = 'black'),
-        strip.text = element_text(face = "bold"),
-        strip.background = element_rect(fill = 'grey95'),
-        panel.grid.minor = element_blank()) +
-  labs(x = "Prey mass (g)", y = "Predator mass (g)", color = NULL)
-f2a
-```
 ```{r}
 dat3 <- dat3%>%
   mutate(pred_log_con_g_ma = filter(to_plot, Method == "MA")$Intercept + filter(to_plot, Method == "MA")$Slope * res_g)%>%
   mutate(res_ma = con_g - pred_log_con_g_ma)
 ```
 
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1"),
-       aes(x = step_in_cycle, y = exp(res_ma), shape = fac_step)) +
-  geom_boxplot(outlier.color = NA, position = position_dodge2(width = 0.75)) +
-  geom_jitter(alpha = 0.75, size = 0.75,
-             aes(color = grepl("skip", fac_step)),
-             position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.66)
-             ) +
-  geom_hline(yintercept = 1, color = "black", linetype = "dashed") +
-  scale_y_log10(labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  # scale_x_discrete(labels = c("1", "2", "3", "4 or 5")) +
-  # scale_color_brewer(palette = "Reds", direction = -1, labels = c("egg to 1st", "1st to 2nd", "2nd to 3rd", "3rd to 4th")) +
-  facet_grid(~grepl("skip", fac_step), scales = 'free_x', space = 'free_x') +
-  # labeller = labeller(lcl_max_fac = lc_labs)) +
-  labs(x = "Step in life cycle", 
-       y = "Next host mass vs expected from\n current host (fold difference)",
-       color = "Skip host?") +
-  theme(legend.background = element_rect(color = 'black'),
-        strip.text = element_text(face = "bold"),
-        strip.background = element_rect(fill = 'grey95'),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) +
-  guides(color = guide_legend(override.aes = list(alpha = 1, size = 3))) 
-```
 
 
 
-
-
-
-
-
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1", skipper != "Skip a host"),
-       aes(x = step_in_cycle, y = delta_host_bm, color = is_paratenic)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(alpha = 0.75, size = 0.75,
-             position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
-             ) +
-  labs(x = "Host number, n", y = "Host size, n-1") +
-  theme(legend.background = element_rect(color = 'black'),
-        strip.text = element_text(face = "bold"),
-        strip.background = element_rect(fill = 'grey95'),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) 
-
-```
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1", skipper != "Skip a host"),
-       aes(x = step_in_cycle, y = res_g, color = is_paratenic)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(alpha = 0.75, size = 0.75,
-             position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
-             ) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(x = "Host number, n", y = "Host size, n-1") +
-  theme(legend.background = element_rect(color = 'black'),
-        strip.text = element_text(face = "bold"),
-        strip.background = element_rect(fill = 'grey95'),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) 
-
-```
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1", skipper != "Skip a host")%>%
-         group_by(Parasite.species)%>%
-         mutate(host_bm_next = lead(host_bm)),
-       aes(x = step_in_cycle, y = host_bm_next, color = is_paratenic)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(alpha = 0.75, size = 0.75,
-             position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
-             ) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(x = "Host number, n", y = "Host size, n+1") +
-  theme(legend.background = element_rect(color = 'black'),
-        strip.text = element_text(face = "bold"),
-        strip.background = element_rect(fill = 'grey95'),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) 
-```
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1", skipper != "Skip a host")%>%
-         group_by(Parasite.species)%>%
-         mutate(host_bm_next = lead(host_bm)),
-       aes(x = step_in_cycle, y = delta_host_bm, color = is_paratenic)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(alpha = 0.75, size = 0.75,
-             position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3)
-             ) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(x = "Host number, n", y = "Host size, n+1") +
-  theme(legend.background = element_rect(color = 'black'),
-        strip.text = element_text(face = "bold"),
-        strip.background = element_rect(fill = 'grey95'),
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank()) 
-
-```
-
-```{r}
-library(lme4)
-```
-```{r}
-mm0 <- lmer(res_g ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
-            data = filter(dat3, lcl_max_fac != "1", skipper != "Skip a host"))
-mm1 <- update(mm0, . ~ . + Host_no_fac)
-mm2 <- update(mm1, . ~ . + lcl_max_fac)
-mm3 <- update(mm0, . ~ . + stage_lcl)
-mm4 <- update(mm3, . ~ . + is_paratenic)
-mm5 <- update(mm3, . ~ . + stage_lcl:is_paratenic)
-```
-
-```{r}
-anova(mm0, mm1, mm2, mm3, mm4, mm5, test = "Chi")
-```
-```{r}
-mm0 <- lmer(host_bm_next ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
-            data = filter(dat3, lcl_max_fac != "1", skipper != "Skip a host")%>%
-              group_by(Parasite.species)%>%
-              mutate(host_bm_next = lead(host_bm))
-)
-mm1 <- update(mm0, . ~ . + Host_no_fac)
-mm2 <- update(mm1, . ~ . + lcl_max_fac)
-mm3 <- update(mm0, . ~ . + stage_lcl)
-mm4 <- update(mm3, . ~ . + is_paratenic)
-mm5 <- update(mm3, . ~ . + stage_lcl:is_paratenic)
-```
-
-```{r}
-anova(mm0, mm1, mm2, mm3, mm4, mm5, test = "Chi")
-```
-
-```{r}
-summary(mm5)
-```
-
-
-
-First, we plot the correlation between hosts sizes (big current host, big next host). Steps that involve obligate hosts are similar to those that involve paratenic hosts. However, if a host is skipped (paratenic or otherwise), then there is a large change in host size.
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1"),
-       aes(x = res_g, y = con_g, color = fac_step)) +
-  geom_point(alpha = 0.3) +
-  geom_smooth(method = lm, se = F) +
-  labs(x = "Host n (or egg) size", y = "Host n+1 size")
-```
-
-Here is the same data but as a boxplot with groups separated by life stage. Within a given life stage, paratenic and obligate links look similar, but the change in host mass is larger when the paratenic host is skipped.
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1"), 
-       aes(y = delta_host_bm, x = Host_no_fac, color = fac_step)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), alpha = 0.2) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(y = "Fold change host mass", x = "Host in cycle")
-```
-Lots of comparisons - better to separate?
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1", !grepl("skip",fac_step)), 
-       aes(y = delta_host_bm, x = step_in_cycle, color = fac_step)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), alpha = 0.2) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(y = "Fold change host mass", x = "Host in cycle")
-```
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1", grepl("skip",fac_step)), 
-       aes(y = delta_host_bm, x = step_in_cycle, color = fac_step)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), alpha = 0.2) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(title = "skipping hosts", y = "Fold change host mass", x = "Host in cycle")
-```
-Maybe a slope graph is another way to look at the change? Each line corresponds to a step in a species life cycle. The change in host mass is consistently larger when the paratenic host is skipped, though the difference tends to decrease in very long life cycles.
-
-```{r}
-eggies <- filter(dat3, Host.no == 1)%>%
-  mutate(con_g = res_g, Host.no = 0)%>%
-  select(Parasite.species, fac_step, con_g, lcl_max_fac, Host.no)%>%
-  distinct()
-
-ggplot(bind_rows(dat2, eggies)%>%
-         filter(lcl_max_fac != "1"), 
-       aes(x = Host.no, y = con_g)) +
-  geom_line(aes(group = Parasite.species),
-            alpha = 0.2) +
-  geom_point(aes(color = Facultative), alpha = 0.2) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') 
-
-# ggplot(bind_rows(dat2, eggies)%>%
-#          filter(lcl_max_fac != "1"), 
-#        aes(x = Host.no, y = con_g)) +
-#   geom_line(aes(group = Parasite.species, color = fac_step),
-#             alpha = 0.2) +
-#   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') 
-```
-
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1",
-              fac_step == "from paratenic" | fac_step == "skip paratenic"), 
-       aes(x = fac_step, y = delta_host_bm, color = Host_no_fac)) +
-  geom_line(aes(group = paste(Parasite.species, Host.no))) +
-  geom_point() +
-  facet_grid(~lcl_max_fac)
-```
-
-Let's fit mixed models for the change in host body mass. We add host number, life cycle length, life stage, and then whether or not a link is facultative. We fit the models first for when hosts are infected in succession.
-
-```{r}
-library(lme4)
-```
-```{r}
-mm0 <- lmer(delta_host_bm ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
-            data = filter(dat3, lcl_max_fac != "1", !grepl("skip", fac_step)))
-mm1 <- update(mm0, . ~ . + Host_no_fac)
-mm2 <- update(mm1, . ~ . + lcl_max_fac)
-mm3 <- update(mm0, . ~ . + stage_lcl)
-mm4 <- update(mm3, . ~ . + fac_step)
-```
-
-Likelihood ratio tests show that adding host number is a large improvement (changes in host mass decline with life cycle progression), while adding life cycle length (the changes are smaller in longer life cycles) and the interaction between stage and life cycle length is a small improvement. Finally, being transmitted by paratenic vs obligate hosts does not matter.
-
-```{r}
-anova(mm0, mm1, mm2, mm3, mm4, test = "Chi")
-```
-When we look at the parameters, we see that changes in host mass are similar for obligate and paratenic links. But if the paratenic host is skipped, then there is a large change in host mass.
-
-```{r}
-summary(mm4)
-```
-
-```{r}
-mm0 <- lmer(delta_host_bm ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
-            data = filter(dat3, lcl_max_fac != "1", grepl("skip", fac_step)))
-mm1 <- update(mm0, . ~ . + Host_no_fac)
-mm2 <- update(mm1, . ~ . + lcl_max_fac)
-mm3 <- update(mm0, . ~ . + stage_lcl)
-mm4 <- update(mm3, . ~ . + fac_step)
-mm5 <- update(mm4, . ~ . + stage_lcl*fac_step)
-```
-```{r}
-anova(mm0, mm1, mm2, mm3, mm4, mm5, test = "Chi")
-```
-```{r}
-summary(mm5)
-```
-
-
-#### Trophic level
-
-We make the same plots for the change in host trophic level. We should expect large "gaps" from one host to the next if the intermediate host is skipped.
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1"),
-       aes(x = res_tl, y = con_tl, color = fac_step)) +
-  geom_jitter(width = 0.1, alpha = 0.3) +
-  geom_smooth(method = lm, se = F) +
-  labs(x = "Host n (or egg) trophic level", y = "Host n+1 trophic level")
-```
-
-Here is the same data but as a boxplot with groups separated by life stage. Within a given life stage, paratenic and obligate links look similar, but the change in host trophic level is larger when the paratenic host is skipped.
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1"),
-       # %>%
-         # filter(Host_no_fac != "1"), 
-       aes(y = delta_host_tl, x = Host_no_fac, color = fac_step)) +
-  geom_boxplot(outlier.colour = NA) +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.3), alpha = 0.2) +
-  facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') +
-  labs(y = "Change host TL", x = "Host in cycle")
-```
-Maybe a slope graph is another way to look at the change? Each line corresponds to a step in a species life cycle. The change in host trophic level is consistently larger when the paratenic host is skipped, though the difference tends to decrease in very long life cycles.
-
-```{r}
-ggplot(filter(dat3, lcl_max_fac != "1",
-              fac_step == "from paratenic" | fac_step == "skip paratenic"), 
-       aes(x = fac_step, y = delta_host_tl, color = Host_no_fac)) +
-  geom_line(aes(group = paste(Parasite.species, Host.no))) +
-  geom_point() +
-  facet_grid(~lcl_max_fac)
-```
-
-
-```{r}
-mm0_tl <- lmer(delta_host_tl ~ 1 + (1|Parasite.species) + (1|parasite_genus) + (1|parasite_family) + 
-              (1|parasite_order) + (1|parasite_class) + (1|parasite_phylum), 
-            data = filter(dat3, lcl_max_fac != "1"))
-mm1_tl <- update(mm0_tl, . ~ . + Host_no_fac)
-mm2_tl <- update(mm1_tl, . ~ . + lcl_max_fac)
-mm3_tl <- update(mm0_tl, . ~ . + stage_lcl)
-mm4_tl <- update(mm3_tl, . ~ . + fac_step)
-```
-
-Likelihood ratio tests show that adding host number is a large improvement (changes in host TL decline with life cycle progression), while adding life cycle length is not an improvement (the changes in TL are consistent across life cycle lengths) and the interaction between stage and life cycle length is a small improvement. Finally, it is clear that facultative step is a large improvement.
-
-```{r}
-anova(mm0_tl, mm1_tl, mm2_tl, mm3_tl, mm4_tl, test = "Chi")
-```
-When we look at the parameters, we see that changes in host TL are similar for obligate and paratenic links. But if the paratenic host is skipped, then there is a large change in host TL.
-
-```{r}
-summary(mm4_tl)
-```
-
-
-```{r}
-# ggplot(filter(dat3, lcl_max_fac != "1")%>%
-#          filter(fac_step != "to paratenic"), 
-#        aes(y = delta_host_tl, x = Host_no_fac, color = fac_step)) +
-#   geom_boxplot(outlier.colour = NA) +
-#   geom_jitter(position = position_jitterdodge()) +
-#   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') 
-```
-
-```{r}
-# ggplot(filter(dat2, lcl_max_fac != "1"), 
-#        aes(x = Host.no, y = host_bm)) +
-#   geom_line(aes(group = Parasite.species)) +
-#   geom_line(data = 
-#               filter(dat2, Parasite.species %in% spp_with_paratenic_stage, Facultative != "paratenic")%>%
-#               group_by(Parasite.species)%>%
-#               mutate(Host.no = 1:length(Parasite.species))
-#               ,
-#             aes(group = Parasite.species),
-#             color = "red") +
-#   facet_grid(~lcl_max_fac, scales = 'free_x', space = 'free_x') 
-```
-
-
-# Conclusions
-
-As expected, paratenic hosts fill an ecological vacuum in complex life cycles.

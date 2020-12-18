@@ -10,10 +10,11 @@ The main data source for this study is a [database](https://esajournals.onlineli
 
 # Analyses
 
-[Here](analyses/paratenics_in_lcs.md) we explore which hosts are usually paratenic hosts. And [here](analyses/paratenics_as_bridges.md) we explore whether these hosts fill an ecological need.
+[Here](analyses/paratenics_in_lcs.md) we explore which hosts are usually paratenic hosts. And [here](analyses/paratenics_as_bridges.md) we explore whether these hosts fulfill an ecological need.
 
 # Conclusions
 
+The results suggest that paratenesis occurs mainly in later life stages when the changes in host mass/trophic level are smaller. Moreover, paratenic hosts fill smaller gaps than obligate hosts at a given life stage. The gaps are not trivial, though, suggesting skipping hosts is probably associated with lower transmission. Finally, parasites enter paratenic hosts slightly larger than obligate intermediate hosts, which may result in less need to grow, higher generalism, and thus lower worm mortality.
 
 # Reference
 
